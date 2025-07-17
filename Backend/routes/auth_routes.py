@@ -7,16 +7,19 @@ from models.models import db, User
 from functools import wraps
 import datetime
 
-auth_frame = Blueprint('auth', __name__)
+auth_bp = Blueprint('auth', __name__)
 
-ADMIN_CREDENTIALS = {'email': 'admin@quiz.com', 'password': 'admin123'}
+ADMIN_CREDENTIALS = {
+    'email': 'admin@quiz.com',
+    'password': 'admin123'
+}
 
 def admin_required(fn):
     @wraps(fn)
     @jwt_required()
     def wrapper(*args, **kwargs):
         user = get_jwt_identity()
-        if user['role'] != 'admin':
+        if user.get('role') != 'admin':
             return jsonify({'error': 'Admin access only'}), 403
         return fn(*args, **kwargs)
     return wrapper
@@ -26,12 +29,12 @@ def user_required(fn):
     @jwt_required()
     def wrapper(*args, **kwargs):
         user = get_jwt_identity()
-        if user['role'] != 'user':
+        if user.get('role') != 'user':
             return jsonify({'error': 'User access only'}), 403
         return fn(*args, **kwargs)
     return wrapper
 
-@auth_frame.route('/login', methods=['POST'])
+@auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
     email = data.get('email')
@@ -42,38 +45,60 @@ def login():
             identity={'email': email, 'role': 'admin'},
             expires_delta=datetime.timedelta(hours=2)
         )
-        return jsonify({'message': 'Admin login successful', 'role': 'admin', 'token': access_token}), 200
+        return jsonify({
+            'message': 'Admin login successful',
+            'role': 'admin',
+            'token': access_token
+        }), 200
 
     user = User.query.filter_by(email=email).first()
     if user and check_password_hash(user.password, password):
-        identity = {'id': user.id, 'email': user.email, 'role': user.role}
+        identity = {
+            'id': user.id,
+            'email': user.email,
+            'role': 'user',
+            'qualification': user.qualification
+        }
         token = create_access_token(identity=identity, expires_delta=datetime.timedelta(hours=2))
-        return jsonify({'message': 'Login successful', 'role': user.role, 'token': token}), 200
+        return jsonify({
+            'message': 'Login successful',
+            'role': 'user',
+            'token': token
+        }), 200
 
     return jsonify({'error': 'Invalid credentials'}), 401
 
-@auth_frame.route('/register', methods=['POST'])
+@auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'message': 'User already exists'}), 409
 
     hashed_password = generate_password_hash(data['password'])
-    user = User(
+
+    new_user = User(
+        name=data['name'],
         email=data['email'],
         password=hashed_password,
-        full_name=data['full_name'],
         qualification=data.get('qualification'),
-        age=data.get('age'),
-        role='user' 
+        age=data.get('age')
     )
-    db.session.add(user)
-    db.session.commit()
-    return jsonify({'message': 'User registered successfully'}), 201
 
-@auth_frame.route('/admin/dashboard')
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({'message': 'User registered successfully'}), 201
+@auth_bp.route('/admin/dashboard', methods=['GET'])
 @admin_required
 def admin_dashboard():
     return jsonify({'message': 'Welcome Admin!'}), 200
 
-
+@auth_bp.route('/user/profile', methods=['GET'])
+@user_required
+def user_profile():
+    user = get_jwt_identity()
+    return jsonify({
+        'message': f"Welcome {user.get('email')}",
+        'qualification': user.get('qualification')
+    }), 200
