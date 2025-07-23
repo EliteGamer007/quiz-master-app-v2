@@ -14,12 +14,13 @@ ADMIN_CREDENTIALS = {
     'password': 'admin123'
 }
 
+# Decorators
 def admin_required(fn):
     @wraps(fn)
     @jwt_required()
     def wrapper(*args, **kwargs):
-        user = get_jwt_identity()
-        if user.get('role') != 'admin':
+        identity = get_jwt_identity()
+        if identity != 'admin':
             return jsonify({'error': 'Admin access only'}), 403
         return fn(*args, **kwargs)
     return wrapper
@@ -28,12 +29,13 @@ def user_required(fn):
     @wraps(fn)
     @jwt_required()
     def wrapper(*args, **kwargs):
-        user = get_jwt_identity()
-        if user.get('role') != 'user':
-            return jsonify({'error': 'User access only'}), 403
-        return fn(*args, **kwargs)
+        identity = get_jwt_identity()
+        if isinstance(identity, dict) and identity.get('role') == 'user':
+            return fn(*args, **kwargs)
+        return jsonify({'error': 'User access only'}), 403
     return wrapper
 
+# Routes
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -41,14 +43,11 @@ def login():
     password = data.get('password')
 
     if email == ADMIN_CREDENTIALS['email'] and password == ADMIN_CREDENTIALS['password']:
-        access_token = create_access_token(
-            identity={'email': email, 'role': 'admin'},
-            expires_delta=datetime.timedelta(hours=2)
-        )
+        token = create_access_token(identity='admin', expires_delta=datetime.timedelta(hours=2))
         return jsonify({
             'message': 'Admin login successful',
             'role': 'admin',
-            'token': access_token
+            'token': token
         }), 200
 
     user = User.query.filter_by(email=email).first()
@@ -78,7 +77,7 @@ def register():
     hashed_password = generate_password_hash(data['password'])
 
     new_user = User(
-        name=data['name'],
+        full_name=data['name'],
         email=data['email'],
         password=hashed_password,
         qualification=data.get('qualification'),
@@ -89,6 +88,7 @@ def register():
     db.session.commit()
 
     return jsonify({'message': 'User registered successfully'}), 201
+
 @auth_bp.route('/admin/dashboard', methods=['GET'])
 @admin_required
 def admin_dashboard():
