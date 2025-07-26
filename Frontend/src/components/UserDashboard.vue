@@ -1,112 +1,124 @@
 <template>
-  <div class="container mt-5">
-    <h2>User Dashboard</h2>
-    <div v-if="user">
-      <p><strong>Email:</strong> {{ user.email }}</p>
-      <p><strong>Qualification:</strong> {{ user.qualification }}</p>
+  <div class="user-dashboard">
+    <div class="navbar">
+      <div class="logo_box">QuizMaster</div>
+      <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
     </div>
 
-    <h4 class="mt-4">Available Subjects</h4>
-    <div v-if="subjects.length" class="row">
-      <div class="col-md-6 mb-3" v-for="subject in subjects" :key="subject.id">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title">{{ subject.title }}</h5>
-            <p class="card-text">{{ subject.description }}</p>
+    <div class="page_wrapper">
+      <div class="header-controls">
+        <h2>Browse Quizzes</h2>
+      </div>
+
+      <div class="subjects-grid" v-if="subjects.length">
+        <div v-for="subject in subjects" :key="subject.id" class="subject-card clickable" @click="selectSubject(subject.id)">
+          <h3>{{ subject.title }}</h3>
+          <p>{{ subject.description }}</p>
+        </div>
+      </div>
+
+      <div v-if="chapters.length">
+        <h3>Chapters in {{ selectedSubjectTitle }}</h3>
+        <div class="subjects-grid">
+          <div v-for="chapter in chapters" :key="chapter.id" class="subject-card clickable" @click="selectChapter(chapter.id)">
+            <h4>{{ chapter.heading }}</h4>
+            <p>{{ chapter.level }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="quizzes.length">
+        <h3>Quizzes in {{ selectedChapterTitle }}</h3>
+        <div class="subjects-grid">
+          <div v-for="quiz in quizzes" :key="quiz.id" class="subject-card clickable">
+            <router-link :to="`/quiz/${quiz.id}`" class="subject-card-link">
+              <h4>{{ quiz.title }}</h4>
+              <p>{{ quiz.description }}</p>
+            </router-link>
           </div>
         </div>
       </div>
     </div>
-    <p v-else>No subjects available.</p>
-
-    <h4 class="mt-5">My Quiz Scores</h4>
-    <table class="table table-bordered mt-2" v-if="scores.length">
-      <thead>
-        <tr>
-          <th>Quiz Title</th>
-          <th>Total Score</th>
-          <th>Time Taken</th>
-          <th>Rank</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(score, index) in scores" :key="index">
-          <td>{{ score.quiz_title }}</td>
-          <td>{{ score.total_score }}</td>
-          <td>{{ score.attempt_time }} mins</td>
-          <td>{{ score.user_rank }}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else>No quiz attempts yet.</p>
   </div>
 </template>
 
 <script>
 export default {
-  name: "UserDashboard",
+  name: 'UserDashboard',
   data() {
     return {
-      user: null,
-      scores: [],
-      subjects: []
+      subjects: [],
+      chapters: [],
+      quizzes: [],
+      selectedSubjectId: '',
+      selectedChapterId: '',
+      selectedSubjectTitle: '',
+      selectedChapterTitle: '',
+      isLoading: true
     };
   },
-  mounted() {
-    this.fetchUserData();
-    this.fetchSubjects();
-  },
   methods: {
-    async fetchUserData() {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/user/dashboard', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        this.user = {
-          email: data.message.split(" ")[1],
-          qualification: data.qualification
-        };
-        this.scores = data.scores;
-      } else {
-        console.error("Failed to load user dashboard");
-      }
+    logout() {
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      this.$router.push('/');
     },
     async fetchSubjects() {
-  const token = localStorage.getItem('token');
-  try {
-    const response = await fetch('/api/user/subjects', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    const contentType = response.headers.get("Content-Type");
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("Backend error:", error);
-      return;
+      try {
+        const response = await fetch('/api/user/subjects', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (!response.ok) throw new Error('Unauthorized');
+        this.subjects = await response.json();
+      } catch (error) {
+        console.error('Error fetching subjects:', error);
+        this.logout();
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    async selectSubject(subjectId) {
+      this.selectedSubjectId = subjectId;
+      this.chapters = [];
+      this.quizzes = [];
+      const subject = this.subjects.find(s => s.id === subjectId);
+      this.selectedSubjectTitle = subject ? subject.title : '';
+      try {
+        const res = await fetch(`/api/user/subjects/${subjectId}/chapters`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        this.chapters = await res.json();
+      } catch (error) {
+        console.error('Error loading chapters:', error);
+      }
+    },
+    async selectChapter(chapterId) {
+      this.selectedChapterId = chapterId;
+      this.quizzes = [];
+      const chapter = this.chapters.find(c => c.id === chapterId);
+      this.selectedChapterTitle = chapter ? chapter.heading : '';
+      try {
+        const res = await fetch(`/api/user/chapters/${chapterId}/quizzes`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        this.quizzes = await res.json();
+      } catch (error) {
+        console.error('Error loading quizzes:', error);
+      }
     }
-
-    if (contentType && contentType.includes("application/json")) {
-      this.subjects = await response.json();
-    } else {
-      console.error("Unexpected response type:", contentType);
-    }
-
-  } catch (err) {
-    console.error("Failed to fetch subjects:", err);
-  }
-}
-
+  },
+  mounted() {
+    this.fetchSubjects();
   }
 };
 </script>
 
 <style scoped>
-.container {
-  max-width: 900px;
-}
-.card {
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+@import '../assets/website_styles.css';
+
+.clickable {
+  cursor: pointer;
 }
 </style>

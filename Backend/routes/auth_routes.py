@@ -14,7 +14,6 @@ ADMIN_CREDENTIALS = {
     'password': 'admin123'
 }
 
-# Decorators
 def admin_required(fn):
     @wraps(fn)
     @jwt_required()

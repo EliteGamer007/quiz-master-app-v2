@@ -68,3 +68,4 @@ class Score(db.Model):
     total_score = db.Column(db.Float, nullable=False)
     attempt_time = db.Column(db.Float)
     user_rank = db.Column(db.Integer)
+    attempt_timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

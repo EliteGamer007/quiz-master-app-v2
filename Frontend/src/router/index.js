@@ -7,6 +7,7 @@ import SubjectDetail from '../components/SubjectDetail.vue';
 import ChapterDetail from '../components/ChapterDetail.vue';
 import QuizDetail from '../components/QuizDetail.vue';
 import UserManagement from '../components/UserManagement.vue';
+import QuizAttempt from '../components/QuizAttempt.vue';
 
 const routes = [
   { path: '/', component: LoginForm, alias: '/login' },
@@ -46,6 +47,16 @@ const routes = [
     name: 'QuizDetail',
     component: QuizDetail,
     meta: { requiresAuth: true, role: 'admin' }
+  },
+  {
+    path: '/quiz/:quizId',
+    name: 'QuizAttempt',
+    component: QuizAttempt,
+    meta: { requiresAuth: true, role: 'user' }
+  },
+  {
+    path: '/:catchAll(.*)',
+    redirect: '/'
   }
 ];
 
@@ -58,14 +69,12 @@ router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
 
   if (to.meta.requiresAuth) {
-    if (!token) {
-      return next('/');
-    }
+    if (!token) return next('/');
+
     try {
       const payloadBase64 = token.split('.')[1];
       const decodedPayload = JSON.parse(atob(payloadBase64));
-      const identity = decodedPayload.sub;
-      
+      const identity = decodedPayload.identity;
       const userRole = typeof identity === 'object' && identity.role ? identity.role : identity;
 
       if (to.meta.role && userRole !== to.meta.role) {
@@ -76,6 +85,7 @@ router.beforeEach((to, from, next) => {
       return next('/');
     }
   }
+
   next();
 });
 

@@ -13,10 +13,13 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = 'super-secret-key-jwt'
-    
-    # CORRECTED: Use the 'static/uploads' folder for public file uploads
+    app.config['JWT_IDENTITY_CLAIM'] = 'identity'
+
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+    app.config['broker_url'] = 'redis://localhost:6379/0'
+    app.config['result_backend'] = 'redis://localhost:6379/0'
 
     CORS(app, supports_credentials=True, origins="http://localhost:8080")
 
@@ -26,6 +29,7 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(user_bp, url_prefix='/api/user')
+
     with app.app_context():
         db.create_all()
 

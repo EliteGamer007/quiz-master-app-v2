@@ -63,7 +63,7 @@ export default {
         if (role === 'admin') {
           this.$router.push('/admin_dashboard');
         } else if (role === 'user') {
-          this.$router.push('/user_dashboard');
+          this.$router.push('/dashboard');
         } else {
           alert('Unknown role. Access denied.');
         }
