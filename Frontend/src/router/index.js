@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import LoginForm from '../components/LoginForm.vue';
 import RegisterForm from '../components/RegisterForm.vue';
 import AdminDashboard from '../components/AdminDashboard.vue';
+import UserDashboard from '../components/UserDashboard.vue';
 import SubjectDetail from '../components/SubjectDetail.vue';
 import ChapterDetail from '../components/ChapterDetail.vue';
 import QuizDetail from '../components/QuizDetail.vue';
@@ -15,6 +16,12 @@ const routes = [
     name: 'AdminDashboard',
     component: AdminDashboard,
     meta: { requiresAuth: true, role: 'admin' }
+  },
+  {
+    path: '/dashboard',
+    name: 'UserDashboard',
+    component: UserDashboard,
+    meta: { requiresAuth: true, role: 'user' }
   },
   {
     path: '/admin/users',
@@ -58,13 +65,14 @@ router.beforeEach((to, from, next) => {
       const payloadBase64 = token.split('.')[1];
       const decodedPayload = JSON.parse(atob(payloadBase64));
       const identity = decodedPayload.sub;
+      
       const userRole = typeof identity === 'object' && identity.role ? identity.role : identity;
-      if (userRole !== to.meta.role) {
+
+      if (to.meta.role && userRole !== to.meta.role) {
         return next('/');
       }
     } catch (e) {
       localStorage.removeItem('token');
-      localStorage.removeItem('role');
       return next('/');
     }
   }

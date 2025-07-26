@@ -4,6 +4,8 @@ from flask_jwt_extended import JWTManager
 from models.models import db
 from routes.auth_routes import auth_bp
 from routes.admin_routes import admin_bp
+from routes.user_routes import user_bp
+import os
 
 def create_app():
     app = Flask(__name__)
@@ -11,6 +13,10 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = 'super-secret-key-jwt'
+    
+    # CORRECTED: Use the 'static/uploads' folder for public file uploads
+    app.config['UPLOAD_FOLDER'] = 'static/uploads'
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     CORS(app, supports_credentials=True, origins="http://localhost:8080")
 
@@ -19,7 +25,7 @@ def create_app():
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
-
+    app.register_blueprint(user_bp, url_prefix='/api/user')
     with app.app_context():
         db.create_all()
 

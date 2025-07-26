@@ -41,16 +41,18 @@ class Quiz(db.Model):
     description = db.Column(db.Text)
     rating = db.Column(db.Float)
     time_limit = db.Column(db.Integer)
+    start_time = db.Column(db.DateTime, nullable=True)
     created_on = db.Column(db.DateTime, default=datetime.utcnow)
     avg_completion_time = db.Column(db.Float)
-
     questions = db.relationship('Question', backref='quiz', cascade='all, delete')
     scores = db.relationship('Score', backref='quiz', cascade='all, delete')
+
 
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
     question_text = db.Column(db.Text, nullable=False)
+    image_url = db.Column(db.String(255), nullable=True)
     option_a = db.Column(db.String(255), nullable=False)
     option_b = db.Column(db.String(255), nullable=False)
     option_c = db.Column(db.String(255), nullable=False)

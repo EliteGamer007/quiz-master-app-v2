@@ -1,6 +1,6 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background-color: #f8f9fa;
+  background-color: #6964f3;
   margin: 0;
   padding: 0;
   color: #343a40;
@@ -11,7 +11,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 0 2rem;
-  background-color: #ffffff;
+  background-color: #790bf7;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   height: 64px;
 }
@@ -82,7 +82,7 @@ body {
 }
 
 .modal-actions button:last-of-type {
-  background-color: #e9ecef;
+  background-color: #ebe9ef;
   color: #495057;
   border: 1px solid #dee2e6;
   padding: 0.65rem 1.25rem;
@@ -155,7 +155,7 @@ body {
 }
 
 .subject-card, .chapter-card, .quiz-card {
-  background-color: #fff;
+  background-color: #5e10f0;
   border-radius: 8px;
   padding: 25px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.07);
@@ -172,7 +172,7 @@ body {
 
 .subject-card h3, .chapter-card h4, .quiz-card h4 {
   margin: 0 0 10px 0;
-  color: #4338ca;
+  color: #000000;
   font-size: 1.25rem;
 }
 
@@ -262,7 +262,7 @@ body {
   font-weight: 500;
 }
 
-.edit-btn { background-color: #ffc107; color: #212529; }
+.edit-btn { background-color: #07eeff; color: #212529; }
 .delete-btn { background-color: #dc3545; color: white; }
 
 .loading, .no-chapters, .no-quizzes {

@@ -1,3 +1,4 @@
+fileName: components/ChapterDetail.vue
 <template>
   <div class="chapter-detail-page">
     <div class="navbar">
@@ -26,7 +27,8 @@
                 <span><strong>Rating:</strong> {{ quiz.rating || 'N/A' }} &#9733;</span>
               </div>
               <div class="quiz-footer">
-                <span>Created: {{ formatDate(quiz.created_on) }}</span>
+                <span v-if="quiz.start_time"><strong>Starts:</strong> {{ formatDateTime(quiz.start_time) }}</span>
+                <span v-else><strong>Starts:</strong> Not scheduled</span>
               </div>
             </router-link>
              <div class="card-actions">
@@ -46,6 +48,10 @@
         <input v-model="modal.data.title" type="text" placeholder="Quiz Title" />
         <textarea v-model="modal.data.description" placeholder="Description"></textarea>
         <input v-model.number="modal.data.time_limit" type="number" placeholder="Time Limit (minutes)" />
+        
+        <label for="start_time">Start Time (Optional)</label>
+        <input v-model="modal.data.start_time" id="start_time" type="datetime-local" />
+
         <div class="modal-actions">
           <button @click="handleQuizSubmit">{{ modal.isEdit ? 'Save Changes' : 'Add Quiz' }}</button>
           <button @click="closeQuizModal">Cancel</button>
@@ -64,7 +70,7 @@ export default {
       showQuizModal: false,
       modal: {
         isEdit: false,
-        data: { id: null, title: '', description: '', time_limit: null }
+        data: { id: null, title: '', description: '', time_limit: null, start_time: '' }
       }
     };
   },
@@ -78,6 +84,7 @@ export default {
       const config = { method, headers, body: body ? JSON.stringify(body) : null };
       const response = await fetch(endpoint, config);
       if (!response.ok) throw new Error(`API call to ${endpoint} failed`);
+      if (response.status === 204) return;
       return response.json();
     },
     async fetchChapterDetails() {
@@ -89,18 +96,25 @@ export default {
         this.$router.go(-1);
       }
     },
-    formatDate(dateString) {
-      if (!dateString) return 'N/A';
-      const options = { year: 'numeric', month: 'long', day: 'numeric' };
-      return new Date(dateString).toLocaleDateString(undefined, options);
+    formatDateTime(dateTimeString) {
+      if (!dateTimeString) return 'N/A';
+      const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+      return new Date(dateTimeString).toLocaleString(undefined, options);
+    },
+    formatForInput(dateTimeString) {
+        if (!dateTimeString) return '';
+        const date = new Date(dateTimeString);
+        const timezoneOffset = date.getTimezoneOffset() * 60000;
+        const localDate = new Date(date.getTime() - timezoneOffset);
+        return localDate.toISOString().slice(0, 16);
     },
     openQuizModal(quiz = null) {
       if (quiz) {
         this.modal.isEdit = true;
-        this.modal.data = { ...quiz };
+        this.modal.data = { ...quiz, start_time: this.formatForInput(quiz.start_time) };
       } else {
         this.modal.isEdit = false;
-        this.modal.data = { id: null, title: '', description: '', time_limit: null };
+        this.modal.data = { id: null, title: '', description: '', time_limit: null, start_time: '' };
       }
       this.showQuizModal = true;
     },
@@ -109,21 +123,22 @@ export default {
     },
     async handleQuizSubmit() {
       const { isEdit, data } = this.modal;
+      const submissionData = {
+          ...data,
+          start_time: data.start_time ? data.start_time : null
+      };
+
       const chapterId = this.chapterData.chapter_id;
       const endpoint = isEdit ? `/api/admin/quizzes/${data.id}` : `/api/admin/chapters/${chapterId}/quizzes`;
       const method = isEdit ? 'PUT' : 'POST';
       
       try {
-        const result = await this.apiCall(endpoint, method, data);
-        if (isEdit) {
-          const index = this.chapterData.quizzes.findIndex(q => q.id === data.id);
-          this.chapterData.quizzes[index] = data;
-        } else {
-          this.chapterData.quizzes.push(result);
-        }
+        await this.apiCall(endpoint, method, submissionData);
+        await this.fetchChapterDetails();
         this.closeQuizModal();
       } catch (error) {
         console.error(error);
+        alert('Failed to save the quiz. Please check the console for errors.');
       }
     },
     confirmDeleteQuiz(quiz) {
