@@ -2,39 +2,34 @@
   <div class="user-dashboard">
     <div class="navbar">
       <div class="logo_box">QuizMaster</div>
+      <div class="navbar-center">
+        <router-link to="/dashboard">Home</router-link>
+        <router-link to="#">Search</router-link>
+        <router-link to="#">Profile</router-link>
+      </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
     </div>
 
     <div class="page_wrapper">
-      <div class="header-controls">
-        <h2>Browse Quizzes</h2>
-      </div>
-
-      <div class="subjects-grid" v-if="subjects.length">
-        <div v-for="subject in subjects" :key="subject.id" class="subject-card clickable" @click="selectSubject(subject.id)">
-          <h3>{{ subject.title }}</h3>
-          <p>{{ subject.description }}</p>
-        </div>
-      </div>
-
-      <div v-if="chapters.length">
-        <h3>Chapters in {{ selectedSubjectTitle }}</h3>
-        <div class="subjects-grid">
-          <div v-for="chapter in chapters" :key="chapter.id" class="subject-card clickable" @click="selectChapter(chapter.id)">
-            <h4>{{ chapter.heading }}</h4>
-            <p>{{ chapter.level }}</p>
+      <div v-if="isLoading" class="loading">Loading...</div>
+      <div v-else class="subject-accordion">
+        <div v-for="subject in subjects" :key="subject.id" class="subject-item">
+          <div class="subject-header" @click="selectSubject(subject)">
+            <h3>{{ subject.title }}</h3>
+            <p>{{ subject.description }}</p>
           </div>
-        </div>
-      </div>
-
-      <div v-if="quizzes.length">
-        <h3>Quizzes in {{ selectedChapterTitle }}</h3>
-        <div class="subjects-grid">
-          <div v-for="quiz in quizzes" :key="quiz.id" class="subject-card clickable">
-            <router-link :to="`/quiz/${quiz.id}`" class="subject-card-link">
-              <h4>{{ quiz.title }}</h4>
-              <p>{{ quiz.description }}</p>
-            </router-link>
+          <div class="accordion-content" :class="{ open: openSubjectId === subject.id }">
+            <div v-if="subject.chapters && subject.chapters.length" class="chapter-list">
+              <div v-for="chapter in subject.chapters" :key="chapter.id" class="chapter-item">
+                <h4 @click="selectChapter(chapter)">{{ chapter.heading }}</h4>
+                <div class="quizzes-grid" v-if="openChapterId === chapter.id && chapter.quizzes">
+                  <div v-for="quiz in chapter.quizzes" :key="quiz.id" class="quiz-card">
+                    <router-link :to="`/quiz/attempt/${quiz.id}`">{{ quiz.title }}</router-link>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="loading-small">Loading chapters...</div>
           </div>
         </div>
       </div>
@@ -48,64 +43,67 @@ export default {
   data() {
     return {
       subjects: [],
-      chapters: [],
-      quizzes: [],
-      selectedSubjectId: '',
-      selectedChapterId: '',
-      selectedSubjectTitle: '',
-      selectedChapterTitle: '',
-      isLoading: true
+      isLoading: true,
+      openSubjectId: null,
+      openChapterId: null,
     };
   },
   methods: {
     logout() {
       localStorage.removeItem('token');
-      localStorage.removeItem('role');
       this.$router.push('/');
     },
     async fetchSubjects() {
+      this.isLoading = true;
       try {
         const response = await fetch('/api/user/subjects', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
-        if (!response.ok) throw new Error('Unauthorized');
+        if (!response.ok) throw new Error('Failed to fetch subjects');
         this.subjects = await response.json();
       } catch (error) {
-        console.error('Error fetching subjects:', error);
-        this.logout();
+        console.error(error);
       } finally {
         this.isLoading = false;
       }
     },
-    async selectSubject(subjectId) {
-      this.selectedSubjectId = subjectId;
-      this.chapters = [];
-      this.quizzes = [];
-      const subject = this.subjects.find(s => s.id === subjectId);
-      this.selectedSubjectTitle = subject ? subject.title : '';
-      try {
-        const res = await fetch(`/api/user/subjects/${subjectId}/chapters`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        this.chapters = await res.json();
-      } catch (error) {
-        console.error('Error loading chapters:', error);
+    async selectSubject(subject) {
+      if (this.openSubjectId === subject.id) {
+        this.openSubjectId = null;
+        return;
+      }
+
+      this.openSubjectId = subject.id;
+      this.openChapterId = null;
+
+      if (!subject.chapters) {
+        try {
+          const res = await fetch(`/api/user/subjects/${subject.id}/chapters`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          subject.chapters = await res.json();
+        } catch (error) {
+          console.error('Error loading chapters:', error);
+        }
       }
     },
-    async selectChapter(chapterId) {
-      this.selectedChapterId = chapterId;
-      this.quizzes = [];
-      const chapter = this.chapters.find(c => c.id === chapterId);
-      this.selectedChapterTitle = chapter ? chapter.heading : '';
-      try {
-        const res = await fetch(`/api/user/chapters/${chapterId}/quizzes`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        this.quizzes = await res.json();
-      } catch (error) {
-        console.error('Error loading quizzes:', error);
+    async selectChapter(chapter) {
+      if (this.openChapterId === chapter.id) {
+        this.openChapterId = null;
+        return;
+      }
+      
+      this.openChapterId = chapter.id;
+      
+      if (!chapter.quizzes) {
+         try {
+          const res = await fetch(`/api/user/chapters/${chapter.id}/quizzes`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          chapter.quizzes = await res.json();
+        } catch (error) {
+          console.error('Error loading quizzes:', error);
+        }
       }
     }
   },
@@ -117,8 +115,4 @@ export default {
 
 <style scoped>
 @import '../assets/website_styles.css';
-
-.clickable {
-  cursor: pointer;
-}
 </style>

@@ -1,11 +1,14 @@
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_mail import Mail
 from models.models import db
 from routes.auth_routes import auth_bp
 from routes.admin_routes import admin_bp
 from routes.user_routes import user_bp
 import os
+
+mail = Mail()
 
 def create_app():
     app = Flask(__name__)
@@ -14,22 +17,29 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = 'super-secret-key-jwt'
     app.config['JWT_IDENTITY_CLAIM'] = 'identity'
-
+    
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     app.config['broker_url'] = 'redis://localhost:6379/0'
     app.config['result_backend'] = 'redis://localhost:6379/0'
 
+    app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+    app.config['MAIL_PORT'] = 587
+    app.config['MAIL_USE_TLS'] = True
+    app.config['MAIL_USERNAME'] = 'sanjeevevps@gmail.com'
+    app.config['MAIL_PASSWORD'] = 'lpud dnfz ljnt chct'
+    app.config['MAIL_DEFAULT_SENDER'] = 'sanjeevevps@gmail.com'
+
     CORS(app, supports_credentials=True, origins="http://localhost:8080")
 
     db.init_app(app)
     JWTManager(app)
+    mail.init_app(app)
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(user_bp, url_prefix='/api/user')
-
     with app.app_context():
         db.create_all()
 

@@ -49,7 +49,8 @@ def get_quiz_questions(quiz_id):
             'option_a': q.option_a,
             'option_b': q.option_b,
             'option_c': q.option_c,
-            'option_d': q.option_d
+            'option_d': q.option_d,
+            'correct_option': q.correct_option
         })
     return jsonify({
         'quiz_id': quiz.id,
@@ -71,7 +72,7 @@ def submit_quiz(quiz_id):
 
     for question in quiz.questions:
         user_answer = answers.get(str(question.id))
-        if user_answer == question.correct_option:
+        if user_answer and user_answer.upper() == question.correct_option.upper():
             score += 1
 
     user = get_jwt_identity()
