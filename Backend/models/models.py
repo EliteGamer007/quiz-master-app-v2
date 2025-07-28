@@ -39,6 +39,7 @@ class Quiz(db.Model):
     description = db.Column(db.Text)
     rating = db.Column(db.Float)
     time_limit = db.Column(db.Integer)
+    one_attempt_only = db.Column(db.Boolean, default=False)
     start_time = db.Column(db.DateTime, nullable=True)
     created_on = db.Column(db.DateTime, default=datetime.utcnow)
     avg_completion_time = db.Column(db.Float)

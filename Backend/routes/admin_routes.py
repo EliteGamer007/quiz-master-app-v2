@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
-from models.models import db, User, Subject, Chapter, Quiz, Question
+from models.models import db, User, Subject, Chapter, Quiz, Question, Score
 from .auth_routes import admin_required
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from werkzeug.utils import secure_filename
 import datetime
 import os
@@ -11,8 +11,33 @@ admin_bp = Blueprint('admin', __name__)
 
 def get_file_url(filename):
     if filename:
-        return f"/static/uploads/{filename}"
+        return f"{request.host_url}static/uploads/{filename}"
     return None
+
+@admin_bp.route('/quiz/<int:quiz_id>/summary', methods=['GET'])
+@admin_required
+def get_quiz_summary(quiz_id):
+    quiz = Quiz.query.options(joinedload(Quiz.questions)).get_or_404(quiz_id)
+    scores = Score.query.filter_by(quiz_id=quiz_id).options(joinedload(Score.user)).order_by(Score.total_score.desc()).limit(5).all()
+
+    top_scores = [{
+        'user_name': score.user.full_name,
+        'score': score.total_score,
+        'max_score': len(quiz.questions)
+    } for score in scores]
+
+    total_attempts = Score.query.filter_by(quiz_id=quiz_id).count()
+    total_possible_score = total_attempts * len(quiz.questions)
+    total_actual_score = db.session.query(func.sum(Score.total_score)).filter_by(quiz_id=quiz_id).scalar() or 0
+    
+    accuracy = (total_actual_score / total_possible_score) * 100 if total_possible_score > 0 else 0
+
+    return jsonify({
+        'top_scores': top_scores,
+        'total_attempts': total_attempts,
+        'accuracy': round(accuracy, 2)
+    })
+
 
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
@@ -133,37 +158,24 @@ def handle_quizzes(chapter_id):
         chapter = Chapter.query.options(joinedload(Chapter.quizzes)).get_or_404(chapter_id)
         quizzes_data = []
         for quiz in chapter.quizzes:
-            created_on_str = quiz.created_on.strftime('%Y-%m-%d %H:%M:%S') if quiz.created_on else None
-            start_time_str = quiz.start_time.isoformat() if quiz.start_time else None
             quizzes_data.append({
                 'id': quiz.id, 'title': quiz.title, 'description': quiz.description,
-                'rating': quiz.rating, 'time_limit': quiz.time_limit, 
-                'created_on': created_on_str, 'start_time': start_time_str
+                'time_limit': quiz.time_limit, 'one_attempt_only': quiz.one_attempt_only
             })
         return jsonify({'chapter_id': chapter.id, 'chapter_heading': chapter.heading, 'quizzes': quizzes_data})
 
     if request.method == 'POST':
         data = request.get_json()
-        start_time = datetime.datetime.fromisoformat(data['start_time']) if data.get('start_time') else None
-        
         new_quiz = Quiz(
             chapter_id=chapter_id, 
             title=data['title'], 
             description=data.get('description'), 
             time_limit=data.get('time_limit'),
-            start_time=start_time
+            one_attempt_only=data.get('one_attempt_only', False)
         )
         db.session.add(new_quiz)
         db.session.commit()
-        
-        return jsonify({
-            'id': new_quiz.id, 
-            'title': new_quiz.title, 
-            'description': new_quiz.description, 
-            'time_limit': new_quiz.time_limit, 
-            'created_on': new_quiz.created_on.strftime('%Y-%m-%d %H:%M:%S'),
-            'start_time': new_quiz.start_time.isoformat() if new_quiz.start_time else None
-        }), 201
+        return jsonify({'id': new_quiz.id}), 201
 
 @admin_bp.route('/quizzes/<int:quiz_id>', methods=['GET', 'PUT', 'DELETE'])
 @admin_required
@@ -174,10 +186,8 @@ def handle_quiz(quiz_id):
             'id': q.id, 
             'question_text': q.question_text, 
             'image_url': get_file_url(q.image_url),
-            'option_a': q.option_a, 
-            'option_b': q.option_b, 
-            'option_c': q.option_c, 
-            'option_d': q.option_d, 
+            'option_a': q.option_a, 'option_b': q.option_b, 
+            'option_c': q.option_c, 'option_d': q.option_d, 
             'correct_option': q.correct_option
         } for q in quiz.questions]
         return jsonify({'id': quiz.id, 'title': quiz.title, 'description': quiz.description, 'questions': questions})
@@ -187,10 +197,7 @@ def handle_quiz(quiz_id):
         quiz.title = data['title']
         quiz.description = data['description']
         quiz.time_limit = data['time_limit']
-        if 'start_time' in data and data['start_time']:
-            quiz.start_time = datetime.datetime.fromisoformat(data['start_time'])
-        else:
-            quiz.start_time = None
+        quiz.one_attempt_only = data.get('one_attempt_only', False)
         db.session.commit()
         return jsonify({'message': 'Quiz updated successfully'})
 
@@ -203,7 +210,6 @@ def handle_quiz(quiz_id):
 @admin_required
 def add_question(quiz_id):
     data = request.form.to_dict()
-    
     image_filename = None
     if 'image' in request.files:
         file = request.files['image']
@@ -211,20 +217,11 @@ def add_question(quiz_id):
             image_filename = secure_filename(file.filename)
             file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], image_filename))
     
-    new_question = Question(
-        quiz_id=quiz_id,
-        image_url=image_filename,
-        **data
-    )
+    new_question = Question(quiz_id=quiz_id, image_url=image_filename, **data)
     db.session.add(new_question)
     db.session.commit()
     
-    response_data = {
-        'id': new_question.id,
-        'image_url': get_file_url(new_question.image_url),
-        **data
-    }
-    return jsonify(response_data), 201
+    return jsonify({'id': new_question.id, 'image_url': get_file_url(new_question.image_url), **data}), 201
 
 @admin_bp.route('/questions/<int:question_id>', methods=['PUT', 'DELETE'])
 @admin_required
@@ -232,27 +229,18 @@ def handle_question(question_id):
     question = Question.query.get_or_404(question_id)
     if request.method == 'PUT':
         data = request.form.to_dict()
-
         if 'image' in request.files:
             file = request.files['image']
             if file.filename != '':
                 image_filename = secure_filename(file.filename)
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], image_filename))
                 question.image_url = image_filename
-
         for key, value in data.items():
             setattr(question, key, value)
-            
         db.session.commit()
         return jsonify({'message': 'Question updated successfully'})
 
     if request.method == 'DELETE':
-        if question.image_url:
-            try:
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], question.image_url))
-            except FileNotFoundError:
-                pass
-        
         db.session.delete(question)
         db.session.commit()
         return jsonify({'message': 'Question deleted successfully'})

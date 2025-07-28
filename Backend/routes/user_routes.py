@@ -8,6 +8,11 @@ from sqlalchemy import or_, func
 
 user_bp = Blueprint('user', __name__)
 
+def get_user_file_url(filename):
+    if filename:
+        return f"{request.host_url}static/uploads/{filename}"
+    return None
+
 @user_bp.route('/subjects', methods=['GET'])
 @user_required
 def get_subjects_for_user():
@@ -48,7 +53,15 @@ def get_quiz_info(quiz_id):
         joinedload(Quiz.chapter).joinedload(Chapter.subject),
         joinedload(Quiz.questions)
     ).get_or_404(quiz_id)
+    
     best_score = db.session.query(func.max(Score.total_score)).filter_by(user_id=user_id, quiz_id=quiz_id).scalar()
+    
+    has_attempted = False
+    if quiz.one_attempt_only:
+        attempt_count = Score.query.filter_by(user_id=user_id, quiz_id=quiz_id).count()
+        if attempt_count > 0:
+            has_attempted = True
+
     info = {
         'id': quiz.id,
         'title': quiz.title,
@@ -58,7 +71,9 @@ def get_quiz_info(quiz_id):
         'subject': quiz.chapter.subject.title,
         'question_count': len(quiz.questions),
         'best_score': best_score if best_score is not None else 'N/A',
-        'average_rating': quiz.rating
+        'average_rating': quiz.rating,
+        'one_attempt_only': quiz.one_attempt_only,
+        'has_attempted': has_attempted
     }
     return jsonify(info)
 
@@ -81,11 +96,8 @@ def rate_quiz(quiz_id):
     db.session.add(new_rating)
     
     quiz = Quiz.query.get_or_404(quiz_id)
-    all_ratings_scores = [r.score for r in quiz.ratings]
-    if new_rating_score not in all_ratings_scores:
-        all_ratings_scores.append(new_rating_score)
-    
-    quiz.rating = sum(all_ratings_scores) / len(all_ratings_scores) if all_ratings_scores else 0
+    all_ratings = [r.score for r in quiz.ratings]
+    quiz.rating = sum(all_ratings) / len(all_ratings) if all_ratings else 0
     
     db.session.commit()
     return jsonify({'message': 'Rating submitted', 'new_average_rating': quiz.rating})
@@ -100,6 +112,7 @@ def get_quiz_questions(quiz_id):
         questions.append({
             'id': q.id,
             'question_text': q.question_text,
+            'image_url': get_user_file_url(q.image_url),
             'option_a': q.option_a,
             'option_b': q.option_b,
             'option_c': q.option_c,
@@ -120,6 +133,7 @@ def submit_quiz(quiz_id):
     answers = data.get('answers', {})
     quiz = Quiz.query.get_or_404(quiz_id)
     score = 0
+    total_questions = len(quiz.questions)
     for question in quiz.questions:
         user_answer = answers.get(str(question.id))
         if user_answer and user_answer.upper() == question.correct_option.upper():
@@ -137,7 +151,7 @@ def submit_quiz(quiz_id):
     return jsonify({
         'message': 'Quiz submitted successfully',
         'total_score': score,
-        'max_score': len(quiz.questions)
+        'max_score': total_questions
     }), 200
 
 @user_bp.route('/scores', methods=['GET'])
@@ -160,20 +174,22 @@ def get_user_scores():
         })
     return jsonify(score_data)
 
+@user_bp.route('/search/subjects', methods=['GET'])
+@user_required
+def search_subjects():
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify([])
+    search_term = f"%{query}%"
+    subjects = Subject.query.filter(Subject.title.ilike(search_term)).all()
+    return jsonify([{'id': s.id, 'title': s.title, 'description': s.description} for s in subjects])
+
 @user_bp.route('/search/quizzes', methods=['GET'])
 @user_required
 def search_quizzes():
-    query = request.args.get('q', '')
+    query = request.args.get('q', '').strip()
     if not query:
         return jsonify([])
-    
     search_term = f"%{query}%"
-    quizzes = Quiz.query.filter(
-        or_(
-            Quiz.title.ilike(search_term),
-            Quiz.description.ilike(search_term)
-        )
-    ).all()
-    
-    results = [{'id': quiz.id, 'title': quiz.title, 'description': quiz.description} for quiz in quizzes]
-    return jsonify(results)
+    quizzes = Quiz.query.filter(Quiz.title.ilike(search_term)).all()
+    return jsonify([{'id': quiz.id, 'title': quiz.title} for quiz in quizzes])

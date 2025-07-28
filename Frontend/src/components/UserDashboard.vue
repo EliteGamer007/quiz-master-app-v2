@@ -4,7 +4,7 @@
       <div class="logo_box">QuizMaster</div>
       <div class="navbar-center">
         <router-link to="/dashboard">Home</router-link>
-        <router-link to="#">Search</router-link>
+        <router-link to="/search">Search</router-link>
         <router-link to="/profile">Profile</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>

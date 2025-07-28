@@ -43,7 +43,10 @@
         </div>
 
         <div class="start-button-container">
-          <button @click="startQuiz" class="start-btn">Start Quiz</button>
+          <button @click="startQuiz" class="start-btn" :disabled="info.has_attempted">
+            {{ info.has_attempted ? 'Already Attempted' : 'Start Quiz' }}
+          </button>
+          <p v-if="info.one_attempt_only" class="attempt-notice">This is a one-attempt only quiz.</p>
         </div>
       </div>
     </div>
@@ -89,6 +92,10 @@ export default {
                 },
                 body: JSON.stringify({ rating })
             });
+            if (res.status === 409) {
+                alert("You have already rated this quiz.");
+                return;
+            }
             const result = await res.json();
             this.info.average_rating = result.new_average_rating;
             alert('Thank you for your rating!');
@@ -175,5 +182,14 @@ export default {
 }
 .start-btn:hover {
   background-color: #4338ca;
+}
+.start-btn:disabled {
+    background-color: #a5b4fc;
+    cursor: not-allowed;
+}
+.attempt-notice {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-top: 0.5rem;
 }
 </style>

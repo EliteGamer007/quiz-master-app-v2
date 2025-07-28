@@ -16,3 +16,5 @@ Milestone 4 completed with user dashboard implementation
 Milestone 7 completed with celery based backend jobs
 
 Milestone 5 completed with quiz history and result summaries
+
+Milestone 8 completed with search functionalities

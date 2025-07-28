@@ -10,6 +10,7 @@ import UserManagement from '../components/UserManagement.vue';
 import QuizAttempt from '../components/QuizAttempt.vue';
 import ProfilePage from '../components/ProfilePage.vue';
 import QuizInfoPage from '../components/QuizInfoPage.vue';
+import SearchPage from '../components/SearchPage.vue';
 
 const routes = [
   { path: '/', component: LoginForm, alias: '/login' },
@@ -42,6 +43,12 @@ const routes = [
     path: '/profile',
     name: 'ProfilePage',
     component: ProfilePage,
+    meta: { requiresAuth: true, role: 'user' }
+  },
+  {
+    path: '/search',
+    name: 'SearchPage',
+    component: SearchPage,
     meta: { requiresAuth: true, role: 'user' }
   },
   {
