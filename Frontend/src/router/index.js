@@ -8,6 +8,8 @@ import ChapterDetail from '../components/ChapterDetail.vue';
 import QuizDetail from '../components/QuizDetail.vue';
 import UserManagement from '../components/UserManagement.vue';
 import QuizAttempt from '../components/QuizAttempt.vue';
+import ProfilePage from '../components/ProfilePage.vue';
+import QuizInfoPage from '../components/QuizInfoPage.vue';
 
 const routes = [
   { path: '/', component: LoginForm, alias: '/login' },
@@ -25,9 +27,21 @@ const routes = [
     meta: { requiresAuth: true, role: 'user' }
   },
   {
+    path: '/quiz/info/:quizId',
+    name: 'QuizInfoPage',
+    component: QuizInfoPage,
+    meta: { requiresAuth: true, role: 'user' }
+  },
+  {
     path: '/quiz/attempt/:quizId',
     name: 'QuizAttempt',
     component: QuizAttempt,
+    meta: { requiresAuth: true, role: 'user' }
+  },
+  {
+    path: '/profile',
+    name: 'ProfilePage',
+    component: ProfilePage,
     meta: { requiresAuth: true, role: 'user' }
   },
   {
@@ -63,7 +77,6 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
-
   if (to.meta.requiresAuth) {
     if (!token) {
       return next('/');
@@ -72,9 +85,7 @@ router.beforeEach((to, from, next) => {
       const payloadBase64 = token.split('.')[1];
       const decodedPayload = JSON.parse(atob(payloadBase64));
       const identity = decodedPayload.identity;
-      
       const userRole = typeof identity === 'object' && identity.role ? identity.role : identity;
-
       if (to.meta.role && userRole !== to.meta.role) {
         return next('/');
       }

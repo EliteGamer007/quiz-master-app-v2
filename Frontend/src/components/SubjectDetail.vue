@@ -14,7 +14,7 @@
         <h2>{{ subject.title }}</h2>
         <router-link to="/admin_dashboard" class="back-link">&larr; Back to Subjects</router-link>
       </div>
-      <p class="subject-description">{{ subject.description }}</p>
+      <p>{{ subject.description }}</p>
 
       <div class="chapter-levels-container">
         <div v-for="level in chapterLevels" :key="level" class="chapter-level-section">
@@ -23,26 +23,22 @@
             <button class="primary-btn" @click="openChapterModal(level)">+ Add Chapter</button>
           </div>
           <hr class="divider">
-          <div class="chapters-grid">
-            <template v-if="subject.chapters[level] && subject.chapters[level].length > 0">
-              <div v-for="chapter in subject.chapters[level]" :key="chapter.id" class="chapter-card">
-                <router-link :to="{ name: 'ChapterDetail', params: { chapterId: chapter.id } }" class="chapter-card-link">
-                    <h4>{{ chapter.heading }}</h4>
-                    <p>{{ chapter.description }}</p>
-                </router-link>
-                <div class="card-actions">
-                    <button class="edit-btn" @click="openChapterModal(level, chapter)">Edit</button>
-                    <button class="delete-btn" @click="confirmDeleteChapter(chapter)">Delete</button>
-                </div>
+          <div class="admin-grid">
+            <div v-for="chapter in subject.chapters[level]" :key="chapter.id" class="admin-card">
+              <router-link :to="{ name: 'ChapterDetail', params: { chapterId: chapter.id } }" class="admin-card-link">
+                  <h4>{{ chapter.heading }}</h4>
+                  <p>{{ chapter.description }}</p>
+              </router-link>
+              <div class="card-actions">
+                  <button class="edit-btn" @click="openChapterModal(level, chapter)">Edit</button>
+                  <button class="delete-btn" @click="confirmDeleteChapter(chapter)">Delete</button>
               </div>
-            </template>
-            <p v-else class="no-chapters">No chapters in this level yet.</p>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div v-else class="loading">Loading subject details...</div>
-
+    
     <div v-if="showChapterModal" class="modal-overlay">
       <div class="modal-content">
         <h4>{{ modal.isEdit ? 'Edit' : 'Add New' }} {{ modal.data.level }} Chapter</h4>
@@ -56,7 +52,6 @@
     </div>
   </div>
 </template>
-
 <script>
 export default {
   name: 'SubjectDetail',
@@ -80,10 +75,8 @@ export default {
       const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' };
       const config = { method, headers, body: body ? JSON.stringify(body) : null };
       const response = await fetch(endpoint, config);
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API call to ${endpoint} failed with status ${response.status}: ${errorText}`);
-      }
+      if (!response.ok) throw new Error(`API call failed`);
+      if (response.status === 204) return;
       return response.json();
     },
     async fetchSubjectDetails() {
@@ -92,18 +85,11 @@ export default {
         this.subject = await this.apiCall(`/api/admin/subjects/${subjectId}`);
       } catch (err) {
         console.error(err);
-        alert("Failed to load subject details. You may be unauthorized.");
-        this.$router.push('/admin_dashboard');
       }
     },
     openChapterModal(level, chapter = null) {
-      if (chapter) {
-        this.modal.isEdit = true;
-        this.modal.data = { ...chapter };
-      } else {
-        this.modal.isEdit = false;
-        this.modal.data = { id: null, heading: '', description: '', level: level };
-      }
+      this.modal.isEdit = !!chapter;
+      this.modal.data = chapter ? { ...chapter } : { id: null, heading: '', description: '', level: level };
       this.showChapterModal = true;
     },
     closeChapterModal() {
@@ -111,18 +97,11 @@ export default {
     },
     async handleChapterSubmit() {
       const { isEdit, data } = this.modal;
-      const subjectId = this.subject.id;
-      const endpoint = isEdit ? `/api/admin/chapters/${data.id}` : `/api/admin/subjects/${subjectId}/chapters`;
+      const endpoint = isEdit ? `/api/admin/chapters/${data.id}` : `/api/admin/subjects/${this.subject.id}/chapters`;
       const method = isEdit ? 'PUT' : 'POST';
-      
       try {
-        const result = await this.apiCall(endpoint, method, data);
-        if (isEdit) {
-          const index = this.subject.chapters[data.level].findIndex(c => c.id === data.id);
-          this.subject.chapters[data.level][index] = data;
-        } else {
-          this.subject.chapters[data.level].push(result);
-        }
+        await this.apiCall(endpoint, method, data);
+        await this.fetchSubjectDetails();
         this.closeChapterModal();
       } catch (error) {
         console.error(error);
@@ -136,8 +115,7 @@ export default {
     async deleteChapter(chapter) {
       try {
         await this.apiCall(`/api/admin/chapters/${chapter.id}`, 'DELETE');
-        const levelChapters = this.subject.chapters[chapter.level];
-        this.subject.chapters[chapter.level] = levelChapters.filter(c => c.id !== chapter.id);
+        await this.fetchSubjectDetails();
       } catch (error) {
         console.error(error);
       }
@@ -148,7 +126,6 @@ export default {
   }
 };
 </script>
-
-<style>
+<style scoped>
 @import '../assets/website_styles.css';
 </style>

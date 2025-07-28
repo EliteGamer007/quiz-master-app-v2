@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required
 from models.models import db, User, Subject, Chapter, Quiz, Question
 from .auth_routes import admin_required
 from sqlalchemy.orm import joinedload
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 import datetime
 import os
@@ -26,6 +26,35 @@ def get_all_users():
         'age': user.age
     } for user in users]
     return jsonify(users_data), 200
+
+@admin_bp.route('/search/users', methods=['GET'])
+@admin_required
+def search_users():
+    query = request.args.get('q', '')
+    if not query:
+        return jsonify([])
+    search_term = f"%{query}%"
+    users = User.query.filter(
+        or_(
+            User.full_name.ilike(search_term),
+            User.email.ilike(search_term)
+        )
+    ).all()
+    return jsonify([{
+        'id': user.id, 'full_name': user.full_name, 'email': user.email,
+        'qualification': user.qualification, 'age': user.age
+    } for user in users])
+
+@admin_bp.route('/search/quizzes', methods=['GET'])
+@admin_required
+def search_quizzes():
+    query = request.args.get('q', '')
+    if not query:
+        return jsonify([])
+    search_term = f"%{query}%"
+    quizzes = Quiz.query.filter(Quiz.title.ilike(search_term)).all()
+    return jsonify([{'id': quiz.id, 'title': quiz.title, 'description': quiz.description} for quiz in quizzes])
+
 
 @admin_bp.route('/subjects', methods=['GET', 'POST'])
 @admin_required
@@ -105,7 +134,6 @@ def handle_quizzes(chapter_id):
         quizzes_data = []
         for quiz in chapter.quizzes:
             created_on_str = quiz.created_on.strftime('%Y-%m-%d %H:%M:%S') if quiz.created_on else None
-            # UPDATED: Serialize start_time to ISO format string
             start_time_str = quiz.start_time.isoformat() if quiz.start_time else None
             quizzes_data.append({
                 'id': quiz.id, 'title': quiz.title, 'description': quiz.description,
@@ -116,7 +144,6 @@ def handle_quizzes(chapter_id):
 
     if request.method == 'POST':
         data = request.get_json()
-        # UPDATED: Parse start_time from incoming request
         start_time = datetime.datetime.fromisoformat(data['start_time']) if data.get('start_time') else None
         
         new_quiz = Quiz(
@@ -129,7 +156,6 @@ def handle_quizzes(chapter_id):
         db.session.add(new_quiz)
         db.session.commit()
         
-        # UPDATED: Include start_time in the response
         return jsonify({
             'id': new_quiz.id, 
             'title': new_quiz.title, 
@@ -161,7 +187,6 @@ def handle_quiz(quiz_id):
         quiz.title = data['title']
         quiz.description = data['description']
         quiz.time_limit = data['time_limit']
-        # UPDATED: Update start_time if provided
         if 'start_time' in data and data['start_time']:
             quiz.start_time = datetime.datetime.fromisoformat(data['start_time'])
         else:

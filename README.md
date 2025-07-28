@@ -13,4 +13,6 @@ Milestone 6 completed with quiz scheduling.
 
 Milestone 4 completed with user dashboard implementation
 
-MIlestone 7 completed with celery based backend jobs
+Milestone 7 completed with celery based backend jobs
+
+Milestone 5 completed with quiz history and result summaries

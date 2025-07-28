@@ -11,13 +11,26 @@
 
     <div class="page_wrapper">
       <div class="header-controls">
-        <h2>Subjects</h2>
+        <h2>{{ searchResults.length ? 'Search Results' : 'Subjects' }}</h2>
         <button class="primary-btn" @click="openModal()">Add Subject</button>
       </div>
 
-      <div class="subjects-grid">
-        <div v-for="subject in subjects" :key="subject.id" class="subject-card">
-          <router-link :to="{ name: 'SubjectDetail', params: { subjectId: subject.id } }" class="subject-card-link">
+      <div class="search-bar">
+        <input type="text" v-model="searchQuery" @input="handleSearch" placeholder="Search for quizzes...">
+      </div>
+
+      <div v-if="searchResults.length" class="admin-grid">
+        <div v-for="quiz in searchResults" :key="quiz.id" class="admin-card">
+          <router-link :to="`/quizzes/${quiz.id}`" class="admin-card-link">
+            <h3>{{ quiz.title }}</h3>
+            <p>{{ quiz.description }}</p>
+          </router-link>
+        </div>
+      </div>
+      
+      <div v-else class="admin-grid">
+        <div v-for="subject in subjects" :key="subject.id" class="admin-card">
+          <router-link :to="{ name: 'SubjectDetail', params: { subjectId: subject.id } }" class="admin-card-link">
             <h3>{{ subject.title }}</h3>
             <p>{{ subject.description }}</p>
           </router-link>
@@ -49,6 +62,8 @@ export default {
   data() {
     return {
       subjects: [],
+      searchQuery: '',
+      searchResults: [],
       showSubjectModal: false,
       modal: {
         isEdit: false,
@@ -59,7 +74,6 @@ export default {
   methods: {
     logout() {
       localStorage.removeItem('token');
-      localStorage.removeItem('role');
       this.$router.push('/');
     },
     async apiCall(endpoint, method = 'GET', body = null) {
@@ -67,14 +81,10 @@ export default {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
         'Content-Type': 'application/json'
       };
-      const config = { method, headers };
-      if (body) {
-        config.body = JSON.stringify(body);
-      }
+      const config = { method, headers, body: body ? JSON.stringify(body) : null };
       const response = await fetch(endpoint, config);
-      if (!response.ok) {
-        throw new Error('API call failed');
-      }
+      if (!response.ok) throw new Error('API call failed');
+      if (response.status === 204 || response.headers.get('Content-Length') === '0') return null;
       return response.json();
     },
     async fetchSubjects() {
@@ -84,14 +94,20 @@ export default {
         console.error(error);
       }
     },
-    openModal(subject = null) {
-      if (subject) {
-        this.modal.isEdit = true;
-        this.modal.data = { ...subject };
-      } else {
-        this.modal.isEdit = false;
-        this.modal.data = { id: null, title: '', description: '' };
+    async handleSearch() {
+      if (this.searchQuery.trim() === '') {
+        this.searchResults = [];
+        return;
       }
+      try {
+        this.searchResults = await this.apiCall(`/api/admin/search/quizzes?q=${this.searchQuery}`);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    openModal(subject = null) {
+      this.modal.isEdit = !!subject;
+      this.modal.data = subject ? { ...subject } : { id: null, title: '', description: '' };
       this.showSubjectModal = true;
     },
     closeModal() {
@@ -102,13 +118,8 @@ export default {
       const endpoint = isEdit ? `/api/admin/subjects/${data.id}` : '/api/admin/subjects';
       const method = isEdit ? 'PUT' : 'POST';
       try {
-        const result = await this.apiCall(endpoint, method, data);
-        if (isEdit) {
-          const index = this.subjects.findIndex(s => s.id === data.id);
-          this.subjects[index] = data;
-        } else {
-          this.subjects.push(result);
-        }
+        await this.apiCall(endpoint, method, data);
+        await this.fetchSubjects();
         this.closeModal();
       } catch (error) {
         console.error(error);
@@ -134,6 +145,6 @@ export default {
 };
 </script>
 
-<style>
+<style scoped>
 @import '../assets/website_styles.css';
 </style>

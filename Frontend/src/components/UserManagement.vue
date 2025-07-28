@@ -13,8 +13,11 @@
       <div class="header-controls">
         <h2>User Management</h2>
       </div>
+      <div class="search-bar">
+        <input type="text" v-model="searchQuery" @input="handleSearch" placeholder="Search by name or email...">
+      </div>
       <div class="table-container">
-        <table>
+        <table class="admin-table">
           <thead>
             <tr>
               <th>ID</th>
@@ -25,7 +28,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="user in users" :key="user.id">
+            <tr v-for="user in displayedUsers" :key="user.id">
               <td>{{ user.id }}</td>
               <td>{{ user.full_name }}</td>
               <td>{{ user.email }}</td>
@@ -44,13 +47,19 @@ export default {
   name: 'UserManagement',
   data() {
     return {
-      users: []
+      users: [],
+      searchQuery: '',
+      searchResults: [],
     };
+  },
+  computed: {
+      displayedUsers() {
+          return this.searchQuery.trim() ? this.searchResults : this.users;
+      }
   },
   methods: {
     logout() {
       localStorage.removeItem('token');
-      localStorage.removeItem('role');
       this.$router.push('/');
     },
     async fetchUsers() {
@@ -63,6 +72,20 @@ export default {
       } catch (error) {
         console.error(error);
       }
+    },
+    async handleSearch() {
+        if (this.searchQuery.trim() === '') {
+            this.searchResults = [];
+            return;
+        }
+        try {
+            const response = await fetch(`/api/admin/search/users?q=${this.searchQuery}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            this.searchResults = await response.json();
+        } catch (error) {
+            console.error(error);
+        }
     }
   },
   mounted() {
@@ -71,6 +94,6 @@ export default {
 };
 </script>
 
-<style>
+<style scoped>
 @import '../assets/website_styles.css';
 </style>

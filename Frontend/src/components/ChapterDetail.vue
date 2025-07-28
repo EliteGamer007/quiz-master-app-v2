@@ -1,4 +1,3 @@
-fileName: components/ChapterDetail.vue
 <template>
   <div class="chapter-detail-page">
     <div class="navbar">
@@ -16,31 +15,19 @@ fileName: components/ChapterDetail.vue
         <button class="primary-btn" @click="openQuizModal()">+ Add Quiz</button>
       </div>
 
-      <div class="quizzes-grid">
-        <template v-if="chapterData.quizzes && chapterData.quizzes.length > 0">
-          <div v-for="quiz in chapterData.quizzes" :key="quiz.id" class="quiz-card">
-            <router-link :to="{ name: 'QuizDetail', params: { quizId: quiz.id } }" class="quiz-card-link">
-              <h4>{{ quiz.title }}</h4>
-              <p class="quiz-description">{{ quiz.description }}</p>
-              <div class="quiz-meta">
-                <span><strong>Time Limit:</strong> {{ quiz.time_limit }} mins</span>
-                <span><strong>Rating:</strong> {{ quiz.rating || 'N/A' }} &#9733;</span>
-              </div>
-              <div class="quiz-footer">
-                <span v-if="quiz.start_time"><strong>Starts:</strong> {{ formatDateTime(quiz.start_time) }}</span>
-                <span v-else><strong>Starts:</strong> Not scheduled</span>
-              </div>
-            </router-link>
-             <div class="card-actions">
-              <button class="edit-btn" @click="openQuizModal(quiz)">Edit</button>
-              <button class="delete-btn" @click="confirmDeleteQuiz(quiz)">Delete</button>
-            </div>
+      <div class="admin-grid">
+        <div v-for="quiz in chapterData.quizzes" :key="quiz.id" class="admin-card">
+          <router-link :to="{ name: 'QuizDetail', params: { quizId: quiz.id } }" class="admin-card-link">
+            <h4>{{ quiz.title }}</h4>
+            <p>{{ quiz.description }}</p>
+          </router-link>
+           <div class="card-actions">
+            <button class="edit-btn" @click="openQuizModal(quiz)">Edit</button>
+            <button class="delete-btn" @click="confirmDeleteQuiz(quiz)">Delete</button>
           </div>
-        </template>
-        <p v-else class="no-quizzes">No quizzes have been added to this chapter yet.</p>
+        </div>
       </div>
     </div>
-    <div v-else class="loading">Loading chapter details...</div>
 
     <div v-if="showQuizModal" class="modal-overlay">
       <div class="modal-content">
@@ -48,10 +35,8 @@ fileName: components/ChapterDetail.vue
         <input v-model="modal.data.title" type="text" placeholder="Quiz Title" />
         <textarea v-model="modal.data.description" placeholder="Description"></textarea>
         <input v-model.number="modal.data.time_limit" type="number" placeholder="Time Limit (minutes)" />
-        
         <label for="start_time">Start Time (Optional)</label>
         <input v-model="modal.data.start_time" id="start_time" type="datetime-local" />
-
         <div class="modal-actions">
           <button @click="handleQuizSubmit">{{ modal.isEdit ? 'Save Changes' : 'Add Quiz' }}</button>
           <button @click="closeQuizModal">Cancel</button>
@@ -60,7 +45,6 @@ fileName: components/ChapterDetail.vue
     </div>
   </div>
 </template>
-
 <script>
 export default {
   name: 'ChapterDetail',
@@ -83,7 +67,7 @@ export default {
       const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' };
       const config = { method, headers, body: body ? JSON.stringify(body) : null };
       const response = await fetch(endpoint, config);
-      if (!response.ok) throw new Error(`API call to ${endpoint} failed`);
+      if (!response.ok) throw new Error(`API call failed`);
       if (response.status === 204) return;
       return response.json();
     },
@@ -93,13 +77,7 @@ export default {
         this.chapterData = await this.apiCall(`/api/admin/chapters/${chapterId}/quizzes`);
       } catch (err) {
         console.error(err);
-        this.$router.go(-1);
       }
-    },
-    formatDateTime(dateTimeString) {
-      if (!dateTimeString) return 'N/A';
-      const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-      return new Date(dateTimeString).toLocaleString(undefined, options);
     },
     formatForInput(dateTimeString) {
         if (!dateTimeString) return '';
@@ -109,13 +87,8 @@ export default {
         return localDate.toISOString().slice(0, 16);
     },
     openQuizModal(quiz = null) {
-      if (quiz) {
-        this.modal.isEdit = true;
-        this.modal.data = { ...quiz, start_time: this.formatForInput(quiz.start_time) };
-      } else {
-        this.modal.isEdit = false;
-        this.modal.data = { id: null, title: '', description: '', time_limit: null, start_time: '' };
-      }
+      this.modal.isEdit = !!quiz;
+      this.modal.data = quiz ? { ...quiz, start_time: this.formatForInput(quiz.start_time) } : { id: null, title: '', description: '', time_limit: null, start_time: '' };
       this.showQuizModal = true;
     },
     closeQuizModal() {
@@ -123,22 +96,15 @@ export default {
     },
     async handleQuizSubmit() {
       const { isEdit, data } = this.modal;
-      const submissionData = {
-          ...data,
-          start_time: data.start_time ? data.start_time : null
-      };
-
-      const chapterId = this.chapterData.chapter_id;
-      const endpoint = isEdit ? `/api/admin/quizzes/${data.id}` : `/api/admin/chapters/${chapterId}/quizzes`;
+      const submissionData = { ...data, start_time: data.start_time || null };
+      const endpoint = isEdit ? `/api/admin/quizzes/${data.id}` : `/api/admin/chapters/${this.chapterData.chapter_id}/quizzes`;
       const method = isEdit ? 'PUT' : 'POST';
-      
       try {
         await this.apiCall(endpoint, method, submissionData);
         await this.fetchChapterDetails();
         this.closeQuizModal();
       } catch (error) {
         console.error(error);
-        alert('Failed to save the quiz. Please check the console for errors.');
       }
     },
     confirmDeleteQuiz(quiz) {
@@ -160,7 +126,6 @@ export default {
   }
 };
 </script>
-
-<style>
+<style scoped>
 @import '../assets/website_styles.css';
 </style>

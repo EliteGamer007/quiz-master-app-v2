@@ -114,7 +114,7 @@ export default {
       });
       const result = await res.json();
       alert(`Quiz complete! You scored ${result.total_score} out of ${result.max_score}`);
-      this.$router.push('/dashboard');
+      this.$router.push(`/quiz/info/${this.quiz.quiz_id}`);
     }
   },
   beforeUnmount() {
@@ -127,5 +127,5 @@ export default {
 </script>
 
 <style scoped>
-@import '../assets/website_styles.css';
+@import '../assets/user_styles.css';
 </style>
