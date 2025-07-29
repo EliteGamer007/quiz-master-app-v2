@@ -18,3 +18,5 @@ Milestone 7 completed with celery based backend jobs
 Milestone 5 completed with quiz history and result summaries
 
 Milestone 8 completed with search functionalities
+
+Milestone 9 completed with csv export for users.

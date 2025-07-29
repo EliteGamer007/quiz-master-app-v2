@@ -33,20 +33,17 @@
           </div>
         </div>
 
-        <div class="rating-section">
-          <h3>Rate this Quiz</h3>
-          <div class="stars">
-            <span v-for="n in 5" :key="n" @click="rate(n)" class="star" :class="{ filled: n <= currentRating }">&#9733;</span>
-          </div>
-          <p v-if="info.average_rating">Average Rating: {{ parseFloat(info.average_rating).toFixed(1) }} &#9733;</p>
-          <p v-else>No ratings yet.</p>
-        </div>
-
         <div class="start-button-container">
-          <button @click="startQuiz" class="start-btn" :disabled="info.has_attempted">
-            {{ info.has_attempted ? 'Already Attempted' : 'Start Quiz' }}
-          </button>
-          <p v-if="info.one_attempt_only" class="attempt-notice">This is a one-attempt only quiz.</p>
+          <div v-if="info.status === 'Live'">
+            <button @click="startQuiz" class="start-btn" :disabled="info.has_attempted">
+              {{ info.has_attempted ? 'Already Attempted' : 'Start Quiz' }}
+            </button>
+            <p v-if="info.one_attempt_only" class="attempt-notice">This is a one-attempt only quiz.</p>
+          </div>
+          <div v-else class="status-box">
+            <p v-if="info.status === 'Not yet started'">This quiz has not started yet. It will be available on {{ info.start_time_formatted }}.</p>
+            <p v-if="info.status === 'Expired'">This quiz has expired.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -60,7 +57,6 @@ export default {
     return {
       info: null,
       isLoading: true,
-      currentRating: 0,
     };
   },
   methods: {
@@ -79,29 +75,6 @@ export default {
       } finally {
         this.isLoading = false;
       }
-    },
-    async rate(rating) {
-        this.currentRating = rating;
-        const quizId = this.$route.params.quizId;
-        try {
-            const res = await fetch(`/api/user/quiz/${quizId}/rate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({ rating })
-            });
-            if (res.status === 409) {
-                alert("You have already rated this quiz.");
-                return;
-            }
-            const result = await res.json();
-            this.info.average_rating = result.new_average_rating;
-            alert('Thank you for your rating!');
-        } catch (error) {
-            console.error("Failed to submit rating:", error);
-        }
     },
     startQuiz() {
       this.$router.push(`/quiz/attempt/${this.info.id}`);
@@ -153,18 +126,6 @@ export default {
   font-size: 0.9rem;
   color: #6c757d;
 }
-.rating-section {
-  padding: 2rem 0;
-  text-align: center;
-}
-.stars {
-  font-size: 2.5rem;
-  color: #ced4da;
-  cursor: pointer;
-}
-.star.filled {
-  color: #ffc107;
-}
 .start-button-container {
   text-align: center;
   margin-top: 1rem;
@@ -178,10 +139,6 @@ export default {
   font-size: 1.2rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
-}
-.start-btn:hover {
-  background-color: #4338ca;
 }
 .start-btn:disabled {
     background-color: #a5b4fc;
@@ -191,5 +148,12 @@ export default {
     font-size: 0.9rem;
     color: #6c757d;
     margin-top: 0.5rem;
+}
+.status-box {
+    background-color: #f8d7da;
+    color: #842029;
+    padding: 1rem;
+    border-radius: 8px;
+    font-weight: 500;
 }
 </style>

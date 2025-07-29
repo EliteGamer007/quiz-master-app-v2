@@ -35,6 +35,8 @@
         <input v-model="modal.data.title" type="text" placeholder="Quiz Title" />
         <textarea v-model="modal.data.description" placeholder="Description"></textarea>
         <input v-model.number="modal.data.time_limit" type="number" placeholder="Time Limit (minutes)" />
+        <label for="start_time">Start Time (Optional)</label>
+        <input v-model="modal.data.start_time" id="start_time" type="datetime-local" />
         <div class="checkbox-container">
           <input type="checkbox" v-model="modal.data.one_attempt_only" id="one_attempt_only" />
           <label for="one_attempt_only">One Attempt Only</label>
@@ -56,7 +58,7 @@ export default {
       showQuizModal: false,
       modal: {
         isEdit: false,
-        data: { id: null, title: '', description: '', time_limit: null, one_attempt_only: false }
+        data: { id: null, title: '', description: '', time_limit: null, one_attempt_only: false, start_time: '' }
       }
     };
   },
@@ -81,9 +83,16 @@ export default {
         console.error(err);
       }
     },
+    formatForInput(dateTimeString) {
+        if (!dateTimeString) return '';
+        const date = new Date(dateTimeString);
+        const timezoneOffset = date.getTimezoneOffset() * 60000;
+        const localDate = new Date(date.getTime() - timezoneOffset);
+        return localDate.toISOString().slice(0, 16);
+    },
     openQuizModal(quiz = null) {
       this.modal.isEdit = !!quiz;
-      this.modal.data = quiz ? { ...quiz } : { id: null, title: '', description: '', time_limit: null, one_attempt_only: false };
+      this.modal.data = quiz ? { ...quiz, start_time: this.formatForInput(quiz.start_time) } : { id: null, title: '', description: '', time_limit: null, one_attempt_only: false, start_time: '' };
       this.showQuizModal = true;
     },
     closeQuizModal() {

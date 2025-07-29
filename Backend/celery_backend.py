@@ -1,27 +1,25 @@
 import eventlet
 eventlet.monkey_patch()
 
-from app import create_app
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_init
 
-flask_app = create_app()
+celery = Celery(__name__)
+celery.config_from_object('celeryconfig')
 
-celery = Celery(
-    __name__,
-    broker=flask_app.config['broker_url'],
-    backend=flask_app.config['result_backend'],
-    include=['tasks']
-)
+@worker_process_init.connect
+def init_app(**kwargs):
+    from app import create_app
+    global flask_app
+    flask_app = create_app()
 
-celery.conf.update(flask_app.config)
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with flask_app.app_context():
+                return self.run(*args, **kwargs)
 
-class ContextTask(celery.Task):
-    def __call__(self, *args, **kwargs):
-        with flask_app.app_context():
-            return self.run(*args, **kwargs)
-
-celery.Task = ContextTask
+    celery.Task = ContextTask
 
 celery.conf.beat_schedule = {
     'send-daily-reminders': {

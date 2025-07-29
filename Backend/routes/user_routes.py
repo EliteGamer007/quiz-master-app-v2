@@ -1,17 +1,41 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from models.models import db, Subject, Chapter, Quiz, Question, Score, Rating
 from .auth_routes import user_required
 from datetime import datetime
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, func
+from tasks import export_quiz_history_csv
+from celery.result import AsyncResult
+import os
 
 user_bp = Blueprint('user', __name__)
 
-def get_user_file_url(filename):
-    if filename:
-        return f"{request.host_url}static/uploads/{filename}"
-    return None
+@user_bp.route('/export-scores', methods=['POST'])
+@user_required
+def export_scores():
+    user = get_jwt_identity()
+    user_id = user.get('id')
+    task = export_quiz_history_csv.delay(user_id)
+    return jsonify({'task_id': task.id}), 202
+
+@user_bp.route('/export-status/<task_id>', methods=['GET'])
+@user_required
+def get_export_status(task_id):
+    task_result = AsyncResult(task_id)
+    result = {
+        "task_id": task_id,
+        "task_status": task_result.status,
+        "task_result": task_result.result,
+    }
+    return jsonify(result)
+
+@user_bp.route('/download-export/<filename>', methods=['GET'])
+@user_required
+def download_export(filename):
+    export_dir = os.path.join(os.getcwd(), 'static', 'exports')
+    return send_from_directory(export_dir, filename, as_attachment=True)
+
 
 @user_bp.route('/subjects', methods=['GET'])
 @user_required
@@ -62,6 +86,15 @@ def get_quiz_info(quiz_id):
         if attempt_count > 0:
             has_attempted = True
 
+    status = 'Live'
+    if quiz.start_time:
+        now = datetime.utcnow()
+        end_time = quiz.start_time + datetime.timedelta(minutes=(quiz.time_limit * 2))
+        if now < quiz.start_time:
+            status = 'Not yet started'
+        elif now > end_time:
+            status = 'Expired'
+
     info = {
         'id': quiz.id,
         'title': quiz.title,
@@ -73,7 +106,9 @@ def get_quiz_info(quiz_id):
         'best_score': best_score if best_score is not None else 'N/A',
         'average_rating': quiz.rating,
         'one_attempt_only': quiz.one_attempt_only,
-        'has_attempted': has_attempted
+        'has_attempted': has_attempted,
+        'status': status,
+        'start_time_formatted': quiz.start_time.strftime('%Y-%m-%d %H:%M') if quiz.start_time else None
     }
     return jsonify(info)
 
@@ -107,12 +142,21 @@ def rate_quiz(quiz_id):
 @user_required
 def get_quiz_questions(quiz_id):
     quiz = Quiz.query.options(joinedload(Quiz.questions)).get_or_404(quiz_id)
+
+    if quiz.start_time:
+        now = datetime.utcnow()
+        end_time = quiz.start_time + datetime.timedelta(minutes=(quiz.time_limit * 2))
+        if now < quiz.start_time:
+            return jsonify({'error': 'This quiz has not started yet.'}), 403
+        if now > end_time:
+            return jsonify({'error': 'This quiz has expired.'}), 403
+
     questions = []
     for q in quiz.questions:
         questions.append({
             'id': q.id,
             'question_text': q.question_text,
-            'image_url': get_user_file_url(q.image_url),
+            'image_url': f"{request.host_url}static/uploads/{q.image_url}" if q.image_url else None,
             'option_a': q.option_a,
             'option_b': q.option_b,
             'option_c': q.option_c,

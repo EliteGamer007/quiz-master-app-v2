@@ -4,7 +4,7 @@
       <div class="logo_box">QuizMaster</div>
       <div class="navbar-center">
         <router-link to="/dashboard">Home</router-link>
-        <router-link to="#">Search</router-link>
+        <router-link to="/search">Search</router-link>
         <router-link to="/profile">Profile</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
@@ -32,7 +32,12 @@
         </div>
 
         <div class="history-section">
-          <h2 class="section-title">Quiz History</h2>
+          <div class="history-header">
+            <h2 class="section-title">Quiz History</h2>
+            <button @click="startExport" :disabled="isExporting" class="export-btn">
+              {{ isExporting ? 'Exporting...' : 'Export as CSV' }}
+            </button>
+          </div>
           <table class="history-table">
             <thead>
               <tr>
@@ -47,7 +52,7 @@
               </tr>
               <tr v-for="(score, index) in scores" :key="index">
                 <td>
-                  <router-link :to="`/quiz/attempt/${score.quiz_id}`">
+                  <router-link :to="`/quiz/info/${score.quiz_id}`">
                     {{ score.quiz_title }}
                   </router-link>
                 </td>
@@ -69,6 +74,7 @@ export default {
     return {
       scores: [],
       isLoading: true,
+      isExporting: false,
     };
   },
   computed: {
@@ -110,6 +116,66 @@ export default {
     formatDate(dateString) {
       const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
       return new Date(dateString).toLocaleDateString(undefined, options);
+    },
+    async startExport() {
+      this.isExporting = true;
+      try {
+        const res = await fetch('/api/user/export-scores', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const data = await res.json();
+        this.pollTaskStatus(data.task_id);
+      } catch (error) {
+        console.error('Failed to start export:', error);
+        this.isExporting = false;
+      }
+    },
+    pollTaskStatus(taskId) {
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/user/export-status/${taskId}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          const data = await res.json();
+          if (data.task_status === 'SUCCESS') {
+            clearInterval(interval);
+            const filename = data.task_result.file_url.split('/').pop();
+            this.downloadFile(filename);
+          } else if (data.task_status === 'FAILURE') {
+            clearInterval(interval);
+            this.isExporting = false;
+            alert('Export failed. Please try again.');
+          }
+        } catch (error) {
+          clearInterval(interval);
+          this.isExporting = false;
+          console.error('Failed to poll task status:', error);
+        }
+      }, 3000);
+    },
+    async downloadFile(filename) {
+        try {
+            const res = await fetch(`/api/user/download-export/${filename}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!res.ok) throw new Error('Download failed');
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'quiz_history.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch(error) {
+            console.error(error);
+            alert('Could not download the file.');
+        } finally {
+            this.isExporting = false;
+        }
     }
   },
   mounted() {
@@ -121,53 +187,21 @@ export default {
 <style scoped>
 @import '../assets/user_styles.css';
 
-.summary-section, .history-section {
-  padding: 2rem;
-  border-radius: 8px;
-  margin-bottom: 2rem;
-  color: #000000;
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-.section-title {
-    border-bottom: 2px solid rgba(255, 255, 255, 0.5);
-    padding-bottom: 0.5rem;
-    display: inline-block;
+.export-btn {
+  background-color: #5e10f0;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
 }
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  text-align: center;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-.stat-value {
-  font-size: 2.5rem;
-  font-weight: bold;
-}
-.stat-label {
-  color: #e3e3e3;
-}
-.history-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1.5rem;
-  background-color: rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.history-table th, .history-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  text-align: left;
-}
-.history-table th {
-  background-color: rgba(0, 0, 0, 0.2);
-}
-.history-table tbody tr:last-child td {
-  border-bottom: none;
-}
-.history-table a {
-    color: #fff;
-    text-decoration: underline;
-    font-weight: 500;
+.export-btn:disabled {
+  background-color: #a78bfa;
+  cursor: not-allowed;
 }
 </style>
