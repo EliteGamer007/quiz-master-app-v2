@@ -2,7 +2,9 @@
   <div class="quiz-detail-page admin-page">
     <div class="navbar">
         <div class="logo_box">QuizMaster</div>
-        <a href="#" class="logout_link" @click.prevent="$router.go(-1)">&larr; Back</a>
+        <div class="navbar-center">
+          <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
+        </div>
     </div>
     <div class="page_wrapper" v-if="quiz">
       <div class="header-controls">

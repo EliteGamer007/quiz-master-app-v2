@@ -1,12 +1,9 @@
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
-from flask_mail import Mail
-from models.models import db
 from sqlalchemy.pool import NullPool
+from extensions import db, mail, cache, limiter
 import os
-
-mail = Mail()
 
 def create_app():
     app = Flask(__name__)
@@ -27,12 +24,17 @@ def create_app():
     app.config['MAIL_USERNAME'] = 'sanjeevevps@gmail.com'
     app.config['MAIL_PASSWORD'] = 'lpud dnfz ljnt chct'
     app.config['MAIL_DEFAULT_SENDER'] = 'sanjeevevps@gmail.com'
-
+    
+    app.config['CACHE_TYPE'] = 'RedisCache'
+    app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/1'
+    
     CORS(app, supports_credentials=True, origins="http://localhost:8080")
 
     db.init_app(app)
-    JWTManager(app)
     mail.init_app(app)
+    cache.init_app(app)
+    limiter.init_app(app)
+    JWTManager(app)
 
     from routes.auth_routes import auth_bp
     from routes.admin_routes import admin_bp

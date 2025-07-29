@@ -126,6 +126,18 @@ export default {
   font-size: 0.9rem;
   color: #6c757d;
 }
+.rating-section {
+  padding: 2rem 0;
+  text-align: center;
+}
+.stars {
+  font-size: 2.5rem;
+  color: #ced4da;
+  cursor: pointer;
+}
+.star.filled {
+  color: #ffc107;
+}
 .start-button-container {
   text-align: center;
   margin-top: 1rem;

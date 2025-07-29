@@ -2,7 +2,7 @@
   <div class="quiz-attempt-page">
     <div class="navbar">
       <div class="logo_box">QuizMaster</div>
-      <router-link to="/dashboard" class="logout_link">Exit Quiz</router-link>
+      <router-link :to="`/quiz/info/${$route.params.quizId}`" class="logout_link">Exit Quiz</router-link>
     </div>
 
     <div v-if="!quiz" class="loading-container">
@@ -64,14 +64,20 @@ export default {
   },
   methods: {
     async fetchQuiz() {
+      const quizId = this.$route.params.quizId;
       try {
-        const res = await fetch(`/api/user/quiz/${this.$route.params.quizId}/questions`, {
+        const res = await fetch(`/api/user/quiz/${quizId}/questions`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Could not start quiz.');
+        }
         this.quiz = await res.json();
         this.startTimer();
       } catch (error) {
-        console.error("Failed to fetch quiz:", error);
+        alert(error.message);
+        this.$router.push(`/quiz/info/${quizId}`);
       }
     },
     selectOption(option) {

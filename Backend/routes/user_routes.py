@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from models.models import db, Subject, Chapter, Quiz, Question, Score, Rating
 from .auth_routes import user_required
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, func
 from tasks import export_quiz_history_csv
@@ -89,7 +89,7 @@ def get_quiz_info(quiz_id):
     status = 'Live'
     if quiz.start_time:
         now = datetime.utcnow()
-        end_time = quiz.start_time + datetime.timedelta(minutes=(quiz.time_limit * 2))
+        end_time = quiz.start_time + timedelta(minutes=(quiz.time_limit * 2))
         if now < quiz.start_time:
             status = 'Not yet started'
         elif now > end_time:
@@ -145,7 +145,7 @@ def get_quiz_questions(quiz_id):
 
     if quiz.start_time:
         now = datetime.utcnow()
-        end_time = quiz.start_time + datetime.timedelta(minutes=(quiz.time_limit * 2))
+        end_time = quiz.start_time + timedelta(minutes=(quiz.time_limit * 2))
         if now < quiz.start_time:
             return jsonify({'error': 'This quiz has not started yet.'}), 403
         if now > end_time:

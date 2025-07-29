@@ -21,12 +21,12 @@
               <div class="stat-label">Quizzes Taken</div>
             </div>
             <div>
-              <div class="stat-value">{{ correctAnswersPerQuiz }}</div>
-              <div class="stat-label">Correct Answers / Quiz</div>
+              <div class="stat-value">{{ averageScoreRatio }}</div>
+              <div class="stat-label">Average Score Ratio</div>
             </div>
             <div>
-              <div class="stat-value">{{ averageScore }}%</div>
-              <div class="stat-label">Average Score</div>
+              <div class="stat-value">{{ averagePercentage }}%</div>
+              <div class="stat-label">Average Percentage</div>
             </div>
           </div>
         </div>
@@ -81,17 +81,14 @@ export default {
     totalQuizzesTaken() {
       return this.scores.length;
     },
-    totalCorrectAnswers() {
-      return this.scores.reduce((sum, s) => sum + s.score, 0);
+    averageScoreRatio() {
+      if (this.scores.length === 0) return '0.00';
+      const ratios = this.scores.map(s => s.max_score > 0 ? s.score / s.max_score : 0);
+      const sumOfRatios = ratios.reduce((sum, r) => sum + r, 0);
+      return (sumOfRatios / this.scores.length).toFixed(2);
     },
-    correctAnswersPerQuiz() {
-      if (this.scores.length === 0) return '0.0';
-      return (this.totalCorrectAnswers / this.totalQuizzesTaken).toFixed(1);
-    },
-    averageScore() {
-      if (this.scores.length === 0) return 0;
-      const totalPossible = this.scores.reduce((sum, s) => sum + s.max_score, 0);
-      return totalPossible > 0 ? ((this.totalCorrectAnswers / totalPossible) * 100).toFixed(2) : 0;
+    averagePercentage() {
+        return (this.averageScoreRatio * 100).toFixed(2);
     }
   },
   methods: {
