@@ -15,9 +15,41 @@ def get_file_url(filename):
         return f"{request.host_url}static/uploads/{filename}"
     return None
 
+@admin_bp.route('/analytics', methods=['GET'])
+@admin_required
+@limiter.limit("10/minute")
+@cache.cached(timeout=600)
+def get_site_analytics():
+    total_users = User.query.count()
+    total_quizzes = Quiz.query.count()
+    total_attempts = Score.query.count()
+    return jsonify({
+        'total_users': total_users,
+        'total_quizzes': total_quizzes,
+        'total_attempts': total_attempts
+    })
+
+@admin_bp.route('/leaderboard', methods=['GET'])
+@admin_required
+@limiter.limit("10/minute")
+@cache.cached(timeout=600)
+def get_leaderboard():
+    leaderboard = db.session.query(
+        User.full_name,
+        func.sum(Score.total_score).label('total_score'),
+        func.count(Score.id).label('quizzes_taken')
+    ).join(Score).group_by(User.id).order_by(func.sum(Score.total_score).desc()).limit(10).all()
+    
+    return jsonify([{
+        'name': user.full_name,
+        'total_score': user.total_score,
+        'quizzes_taken': user.quizzes_taken
+    } for user in leaderboard])
+
+
 @admin_bp.route('/quiz/<int:quiz_id>/summary', methods=['GET'])
 @admin_required
-@limiter.limit("30/minute")
+@limiter.limit("10/minute")
 @cache.cached(timeout=300)
 def get_quiz_summary(quiz_id):
     quiz = Quiz.query.options(joinedload(Quiz.questions)).get_or_404(quiz_id)
@@ -35,10 +67,17 @@ def get_quiz_summary(quiz_id):
     
     accuracy = (total_actual_score / total_possible_score) * 100 if total_possible_score > 0 else 0
 
+    score_distribution = db.session.query(Score.total_score, func.count(Score.id)).filter_by(quiz_id=quiz_id).group_by(Score.total_score).all()
+    chart_data = {
+        'labels': [f"{int(s[0])}/{len(quiz.questions)}" for s in score_distribution],
+        'data': [s[1] for s in score_distribution]
+    }
+
     return jsonify({
         'top_scores': top_scores,
         'total_attempts': total_attempts,
-        'accuracy': round(accuracy, 2)
+        'accuracy': round(accuracy, 2),
+        'chart_data': chart_data
     })
 
 

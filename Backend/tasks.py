@@ -5,11 +5,13 @@ from app import mail
 from flask_mail import Message
 import csv
 import os
+import eventlet
 
 def send_email(to_email, subject, body):
     print(f"Sending email to: {to_email}")
     msg = Message(subject, recipients=[to_email], body=body)
-    mail.send(msg)
+    eventlet.tpool.execute(mail.send, msg)
+
 
 @celery.task(bind=True)
 def export_quiz_history_csv(self, user_id):

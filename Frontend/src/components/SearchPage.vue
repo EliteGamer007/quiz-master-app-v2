@@ -104,44 +104,4 @@ export default {
 
 <style scoped>
 @import '../assets/user_styles.css';
-
-.search-input {
-  width: 100%;
-  padding: 1rem;
-  font-size: 1.5rem;
-  border-radius: 8px;
-  border: 2px solid #5e10f0;
-  margin-bottom: 2rem;
-}
-
-.results-container h3 {
-  color: #fff;
-  border-bottom: 1px solid #790bf7;
-  padding-bottom: 0.5rem;
-  margin-top: 2rem;
-}
-.result-list {
-  background-color: #5e10f0;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-top: 1rem;
-}
-.result-item {
-  color: #fff;
-  padding: 0.75rem;
-  border-bottom: 1px solid #790bf7;
-}
-.result-item:last-child {
-  border-bottom: none;
-}
-.result-item a {
-  color: #a78bfa;
-  text-decoration: none;
-}
-.no-results {
-    color: #fff;
-    text-align: center;
-    padding: 2rem;
-    font-style: italic;
-}
 </style>

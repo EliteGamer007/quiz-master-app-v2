@@ -131,13 +131,4 @@ export default {
 </script>
 <style scoped>
 @import '../assets/website_styles.css';
-.checkbox-container {
-  display: flex;
-  align-items: center;
-  margin-top: 1rem;
-}
-.checkbox-container input {
-  width: auto;
-  margin-right: 0.5rem;
-}
 </style>

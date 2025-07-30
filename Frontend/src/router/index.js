@@ -11,6 +11,7 @@ import QuizAttempt from '../components/QuizAttempt.vue';
 import ProfilePage from '../components/ProfilePage.vue';
 import QuizInfoPage from '../components/QuizInfoPage.vue';
 import SearchPage from '../components/SearchPage.vue';
+import AnalyticsDashboard from '../components/AnalyticsDashboard.vue';
 
 const routes = [
   { path: '/', component: LoginForm, alias: '/login' },
@@ -19,6 +20,12 @@ const routes = [
     path: '/admin_dashboard',
     name: 'AdminDashboard',
     component: AdminDashboard,
+    meta: { requiresAuth: true, role: 'admin' }
+  },
+  {
+    path: '/admin/analytics',
+    name: 'AnalyticsDashboard',
+    component: AnalyticsDashboard,
     meta: { requiresAuth: true, role: 'admin' }
   },
   {

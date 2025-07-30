@@ -135,11 +135,4 @@ export default {
 
 <style scoped>
 @import '../assets/user_styles.css';
-.question-image-attempt {
-    max-width: 400px;
-    max-height: 250px;
-    border-radius: 8px;
-    margin: 0 auto 1.5rem auto;
-    display: block;
-}
 </style>

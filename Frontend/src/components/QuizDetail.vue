@@ -3,7 +3,8 @@
     <div class="navbar">
         <div class="logo_box">QuizMaster</div>
         <div class="navbar-center">
-          <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
+            <router-link to="/admin_dashboard" class="nav_link">Home</router-link>
+            <a href="#" class="nav_link" @click.prevent="$router.go(-1)">Back</a>
         </div>
     </div>
     <div class="page_wrapper" v-if="quiz">
@@ -23,6 +24,9 @@
               </div>
               <div><strong>Total Attempts</strong><p>{{summary.total_attempts}}</p></div>
               <div><strong>Overall Accuracy</strong><p>{{summary.accuracy}}%</p></div>
+          </div>
+          <div class="chart-container">
+            <canvas id="scoreChart"></canvas>
           </div>
       </div>
 
@@ -68,21 +72,56 @@
   </div>
 </template>
 <script>
+import { Chart } from 'chart.js/auto';
+
 export default {
   name: 'QuizDetail',
   data() {
     return {
       quiz: null,
-      summary: { top_scores: [], total_attempts: 0, accuracy: 0 },
+      summary: { top_scores: [], total_attempts: 0, accuracy: 0, chart_data: { labels: [], data: [] } },
       showQuestionModal: false,
       modal: {
         isEdit: false,
         data: { question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: 'A' },
         file: null
       },
+      scoreChart: null
     };
   },
   methods: {
+    async fetchQuizDetails() {
+        const quizId = this.$route.params.quizId;
+        this.quiz = await this.apiCall(`/api/admin/quizzes/${quizId}`);
+        this.summary = await this.apiCall(`/api/admin/quiz/${quizId}/summary`);
+        this.renderChart();
+    },
+    renderChart() {
+        const ctx = document.getElementById('scoreChart');
+        if (this.scoreChart) {
+            this.scoreChart.destroy();
+        }
+        this.scoreChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: this.summary.chart_data.labels,
+                datasets: [{
+                    label: '# of Users',
+                    data: this.summary.chart_data.data,
+                    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                    borderColor: 'rgba(255, 255, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true, ticks: { color: '#fff' } },
+                    x: { ticks: { color: '#fff' } }
+                },
+                plugins: { legend: { labels: { color: '#fff' } } }
+            }
+        });
+    },
     async apiCall(endpoint, method = 'GET', body = null) {
         const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
         const config = { method, headers };
@@ -98,11 +137,6 @@ export default {
         if (!response.ok && response.status !== 204) throw new Error('API call failed');
         if (response.status === 204) return;
         return response.json();
-    },
-    async fetchQuizDetails() {
-        const quizId = this.$route.params.quizId;
-        this.quiz = await this.apiCall(`/api/admin/quizzes/${quizId}`);
-        this.summary = await this.apiCall(`/api/admin/quiz/${quizId}/summary`);
     },
     openQuestionModal(question = null) {
         this.modal.isEdit = !!question;
@@ -176,5 +210,8 @@ export default {
     max-width: 100px;
     border-radius: 4px;
     margin-bottom: 1rem;
+}
+.chart-container {
+    margin-top: 2rem;
 }
 </style>

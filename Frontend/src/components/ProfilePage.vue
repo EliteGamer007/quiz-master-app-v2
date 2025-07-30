@@ -31,6 +31,11 @@
           </div>
         </div>
 
+        <div class="progress-chart-container">
+            <h2 class="section-title">Your Progress</h2>
+            <canvas id="progressChart"></canvas>
+        </div>
+
         <div class="history-section">
           <div class="history-header">
             <h2 class="section-title">Quiz History</h2>
@@ -68,13 +73,17 @@
 </template>
 
 <script>
+import { Chart } from 'chart.js/auto';
+
 export default {
   name: 'ProfilePage',
   data() {
     return {
       scores: [],
+      progressData: { labels: [], data: [] },
       isLoading: true,
       isExporting: false,
+      progressChart: null
     };
   },
   computed: {
@@ -96,19 +105,58 @@ export default {
       localStorage.removeItem('token');
       this.$router.push('/');
     },
-    async fetchScores() {
-      this.isLoading = true;
-      try {
-        const res = await fetch('/api/user/scores', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    async fetchData() {
+        this.isLoading = true;
+        try {
+            const [scoresRes, progressRes] = await Promise.all([
+                this.apiCall('/api/user/scores'),
+                this.apiCall('/api/user/progress')
+            ]);
+            this.scores = scoresRes;
+            this.progressData = progressRes;
+            this.renderChart();
+        } catch (error) {
+            console.error(error);
+        } finally {
+            this.isLoading = false;
+        }
+    },
+    renderChart() {
+        this.$nextTick(() => {
+            const ctx = document.getElementById('progressChart');
+            if (!ctx) return;
+            if (this.progressChart) {
+                this.progressChart.destroy();
+            }
+            this.progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: this.progressData.labels,
+                    datasets: [{
+                        label: 'Score (%)',
+                        data: this.progressData.data,
+                        borderColor: '#fff',
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: { min: 0, max: 100, ticks: { color: '#fff' } },
+                        x: { ticks: { color: '#fff' } }
+                    },
+                    plugins: { legend: { labels: { color: '#fff' } } }
+                }
+            });
         });
-        if (!res.ok) throw new Error('Failed to fetch scores');
-        this.scores = await res.json();
-      } catch (error) {
-        console.error(error);
-      } finally {
-        this.isLoading = false;
-      }
+    },
+    async apiCall(endpoint) {
+        const res = await fetch(endpoint, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (!res.ok) throw new Error('API call failed');
+        return res.json();
     },
     formatDate(dateString) {
       const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
@@ -157,7 +205,6 @@ export default {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             if (!res.ok) throw new Error('Download failed');
-
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -176,29 +223,11 @@ export default {
     }
   },
   mounted() {
-    this.fetchScores();
+    this.fetchData();
   }
 };
 </script>
 
 <style scoped>
 @import '../assets/user_styles.css';
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.export-btn {
-  background-color: #5e10f0;
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.export-btn:disabled {
-  background-color: #a78bfa;
-  cursor: not-allowed;
-}
 </style>

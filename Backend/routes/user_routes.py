@@ -7,12 +7,40 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, func
 from tasks import export_quiz_history_csv
 from celery.result import AsyncResult
+from extensions import cache, limiter
 import os
 
 user_bp = Blueprint('user', __name__)
 
+@user_bp.route('/progress', methods=['GET'])
+@user_required
+@limiter.limit("20/minute")
+def get_user_progress():
+    user = get_jwt_identity()
+    user_id = user.get('id')
+    
+    progress = db.session.query(
+        Score.attempt_timestamp,
+        Score.total_score,
+        func.count(Question.id)
+    ).select_from(Score).join(
+        Quiz, Score.quiz_id == Quiz.id
+    ).join(
+        Question, Quiz.id == Question.quiz_id
+    ).filter(
+        Score.user_id == user_id
+    ).group_by(Score.id).order_by(Score.attempt_timestamp).all()
+
+    chart_data = {
+        'labels': [p[0].strftime('%b %d') for p in progress],
+        'data': [(p[1] / p[2]) * 100 if p[2] > 0 else 0 for p in progress]
+    }
+    return jsonify(chart_data)
+
+
 @user_bp.route('/export-scores', methods=['POST'])
 @user_required
+@limiter.limit("5/minute")
 def export_scores():
     user = get_jwt_identity()
     user_id = user.get('id')
@@ -21,6 +49,7 @@ def export_scores():
 
 @user_bp.route('/export-status/<task_id>', methods=['GET'])
 @user_required
+@limiter.limit("60/minute")
 def get_export_status(task_id):
     task_result = AsyncResult(task_id)
     result = {
@@ -32,6 +61,7 @@ def get_export_status(task_id):
 
 @user_bp.route('/download-export/<filename>', methods=['GET'])
 @user_required
+@limiter.limit("5/minute")
 def download_export(filename):
     export_dir = os.path.join(os.getcwd(), 'static', 'exports')
     return send_from_directory(export_dir, filename, as_attachment=True)
@@ -39,6 +69,8 @@ def download_export(filename):
 
 @user_bp.route('/subjects', methods=['GET'])
 @user_required
+@limiter.limit("60/minute")
+@cache.cached(timeout=300)
 def get_subjects_for_user():
     subjects = Subject.query.all()
     return jsonify([
@@ -48,6 +80,8 @@ def get_subjects_for_user():
 
 @user_bp.route('/subjects/<int:subject_id>/chapters', methods=['GET'])
 @user_required
+@limiter.limit("60/minute")
+@cache.cached(timeout=300)
 def get_chapters_for_subject(subject_id):
     chapters = Chapter.query.filter_by(subject_id=subject_id).all()
     return jsonify([
@@ -57,6 +91,8 @@ def get_chapters_for_subject(subject_id):
 
 @user_bp.route('/chapters/<int:chapter_id>/quizzes', methods=['GET'])
 @user_required
+@limiter.limit("60/minute")
+@cache.cached(timeout=300)
 def get_quizzes_for_chapter(chapter_id):
     quizzes = Quiz.query.filter_by(chapter_id=chapter_id).all()
     return jsonify([
@@ -70,6 +106,7 @@ def get_quizzes_for_chapter(chapter_id):
 
 @user_bp.route('/quiz-info/<int:quiz_id>', methods=['GET'])
 @user_required
+@limiter.limit("60/minute")
 def get_quiz_info(quiz_id):
     user = get_jwt_identity()
     user_id = user.get('id')
@@ -114,7 +151,9 @@ def get_quiz_info(quiz_id):
 
 @user_bp.route('/quiz/<int:quiz_id>/rate', methods=['POST'])
 @user_required
+@limiter.limit("10/minute")
 def rate_quiz(quiz_id):
+    cache.clear()
     data = request.get_json()
     user = get_jwt_identity()
     user_id = user.get('id')
@@ -140,6 +179,7 @@ def rate_quiz(quiz_id):
 
 @user_bp.route('/quiz/<int:quiz_id>/questions', methods=['GET'])
 @user_required
+@limiter.limit("10/minute")
 def get_quiz_questions(quiz_id):
     quiz = Quiz.query.options(joinedload(Quiz.questions)).get_or_404(quiz_id)
 
@@ -172,7 +212,9 @@ def get_quiz_questions(quiz_id):
 
 @user_bp.route('/quiz/<int:quiz_id>/submit', methods=['POST'])
 @user_required
+@limiter.limit("5/minute")
 def submit_quiz(quiz_id):
+    cache.clear()
     data = request.get_json()
     answers = data.get('answers', {})
     quiz = Quiz.query.get_or_404(quiz_id)
@@ -200,6 +242,8 @@ def submit_quiz(quiz_id):
 
 @user_bp.route('/scores', methods=['GET'])
 @user_required
+@limiter.limit("60/minute")
+@cache.cached(timeout=300)
 def get_user_scores():
     user = get_jwt_identity()
     user_id = user.get('id')
@@ -220,6 +264,7 @@ def get_user_scores():
 
 @user_bp.route('/search/subjects', methods=['GET'])
 @user_required
+@limiter.limit("100/minute")
 def search_subjects():
     query = request.args.get('q', '').strip()
     if not query:
@@ -230,6 +275,7 @@ def search_subjects():
 
 @user_bp.route('/search/quizzes', methods=['GET'])
 @user_required
+@limiter.limit("100/minute")
 def search_quizzes():
     query = request.args.get('q', '').strip()
     if not query:

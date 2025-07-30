@@ -1,5 +1,5 @@
 <template>
-  <div class="subject-detail-page">
+  <div class="subject-detail-page admin-page">
     <div class="navbar">
       <div class="logo_box">QuizMaster</div>
       <div class="navbar-center">

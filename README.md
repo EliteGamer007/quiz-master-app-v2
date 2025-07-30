@@ -22,3 +22,5 @@ Milestone 8 completed with search functionalities
 Milestone 9 completed with csv export for users.
 
 Milestone 10 completed with redis caching and optimization
+
+Additional milestone completed with analysis and leaderboard features.
