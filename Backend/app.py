@@ -28,6 +28,8 @@ def create_app():
     app.config['CACHE_TYPE'] = 'RedisCache'
     app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/1'
     
+    app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/2'
+    
     CORS(app, supports_credentials=True, origins="http://localhost:8080")
 
     db.init_app(app)

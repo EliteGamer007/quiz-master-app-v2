@@ -9,8 +9,43 @@ from tasks import export_quiz_history_csv
 from celery.result import AsyncResult
 from extensions import cache, limiter
 import os
-
+import random
 user_bp = Blueprint('user', __name__)
+
+@user_bp.route('/recommended-quizzes', methods=['GET'])
+@user_required
+def get_recommended_quizzes():
+    user = get_jwt_identity()
+    qualification = user.get('qualification')
+
+    level_map = {
+        'School': 'Beginner',
+        'General': 'Intermediate',
+        'University': 'Advanced'
+    }
+    
+    recommended_quizzes = []
+    target_level = level_map.get(qualification)
+
+    if target_level:
+        chapters = Chapter.query.filter_by(level=target_level).all()
+        for chapter in chapters:
+            recommended_quizzes.extend(chapter.quizzes)
+    
+    if not recommended_quizzes:
+        all_quizzes = Quiz.query.all()
+        if len(all_quizzes) > 3:
+            recommended_quizzes = random.sample(all_quizzes, 3)
+        else:
+            recommended_quizzes = all_quizzes
+    else:
+        if len(recommended_quizzes) > 3:
+            recommended_quizzes = random.sample(recommended_quizzes, 3)
+
+    return jsonify([
+        {'id': quiz.id, 'title': quiz.title} for quiz in recommended_quizzes
+    ])
+
 
 @user_bp.route('/progress', methods=['GET'])
 @user_required
@@ -106,7 +141,6 @@ def get_quizzes_for_chapter(chapter_id):
 
 @user_bp.route('/quiz-info/<int:quiz_id>', methods=['GET'])
 @user_required
-@limiter.limit("60/minute")
 def get_quiz_info(quiz_id):
     user = get_jwt_identity()
     user_id = user.get('id')
@@ -124,6 +158,7 @@ def get_quiz_info(quiz_id):
             has_attempted = True
 
     status = 'Live'
+    end_time = None
     if quiz.start_time:
         now = datetime.utcnow()
         end_time = quiz.start_time + timedelta(minutes=(quiz.time_limit * 2))
@@ -145,9 +180,11 @@ def get_quiz_info(quiz_id):
         'one_attempt_only': quiz.one_attempt_only,
         'has_attempted': has_attempted,
         'status': status,
-        'start_time_formatted': quiz.start_time.strftime('%Y-%m-%d %H:%M') if quiz.start_time else None
+        'start_time_formatted': quiz.start_time.strftime('%Y-%m-%d %H:%M') if quiz.start_time else None,
+        'expiry_time_formatted': end_time.strftime('%Y-%m-%d %H:%M') if end_time else None
     }
     return jsonify(info)
+
 
 @user_bp.route('/quiz/<int:quiz_id>/rate', methods=['POST'])
 @user_required

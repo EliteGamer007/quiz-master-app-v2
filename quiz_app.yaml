@@ -1,0 +1,299 @@
+openapi: 3.0.3
+info:
+  title: Quiz Master API
+  description: API for the Quiz Master application, managing quizzes, users, and analytics.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      summary: Login User or Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+        '401':
+          description: Invalid credentials
+          
+  /auth/register:
+    post:
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                qualification:
+                  type: string
+                age:
+                  type: integer
+      responses:
+        '201':
+          description: User registered successfully
+        '409':
+          description: User already exists
+
+  /admin/subjects:
+    get:
+      summary: Get all subjects (Admin)
+      responses:
+        '200':
+          description: A list of subjects
+    post:
+      summary: Create a new subject (Admin)
+      responses:
+        '201':
+          description: Subject created successfully
+
+  /admin/subjects/{subjectId}:
+    get:
+      summary: Get a specific subject with chapters (Admin)
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Subject details
+    put:
+      summary: Update a subject (Admin)
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Subject updated successfully
+    delete:
+      summary: Delete a subject (Admin)
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Subject deleted successfully
+
+  /admin/quiz/{quizId}/summary:
+    get:
+      summary: Get a quiz's performance summary (Admin)
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Quiz summary data
+
+  /admin/leaderboard:
+    get:
+      summary: Get the site-wide leaderboard (Admin)
+      responses:
+        '200':
+          description: A list of top users
+
+  /admin/analytics:
+    get:
+      summary: Get site-wide analytics (Admin)
+      responses:
+        '200':
+          description: Site analytics data
+
+  /user/subjects:
+    get:
+      summary: Get all subjects (User)
+      responses:
+        '200':
+          description: A list of subjects
+
+  /user/subjects/{subjectId}/chapters:
+    get:
+      summary: Get chapters for a subject (User)
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A list of chapters
+
+  /user/chapters/{chapterId}/quizzes:
+    get:
+      summary: Get quizzes for a chapter (User)
+      parameters:
+        - name: chapterId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A list of quizzes
+  
+  /user/quiz-info/{quizId}:
+    get:
+      summary: Get detailed information for a quiz (User)
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detailed quiz information
+          
+  /user/quiz/{quizId}/questions:
+    get:
+      summary: Get questions for a quiz attempt (User)
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of questions for the quiz
+        '403':
+          description: Quiz is not available (expired or not started)
+
+  /user/quiz/{quizId}/submit:
+    post:
+      summary: Submit quiz answers (User)
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers:
+                  type: object
+      responses:
+        '200':
+          description: Quiz submitted and score returned
+          
+  /user/quiz/{quizId}/rate:
+    post:
+      summary: Rate a quiz (User)
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating:
+                  type: integer
+      responses:
+        '200':
+          description: Rating submitted
+        '409':
+          description: User has already rated this quiz
+
+  /user/scores:
+    get:
+      summary: Get the current user's score history
+      responses:
+        '200':
+          description: A list of past scores
+
+  /user/progress:
+    get:
+      summary: Get data for the user's progress chart
+      responses:
+        '200':
+          description: Chart data with labels and data points
+
+  /user/export-scores:
+    post:
+      summary: Trigger a CSV export of the user's scores
+      responses:
+        '202':
+          description: Export task started, returns a task ID
+
+  /user/export-status/{taskId}:
+    get:
+      summary: Check the status of a CSV export task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The current status of the task
+
+  /user/download-export/{filename}:
+    get:
+      summary: Download a generated CSV export file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The CSV file for download

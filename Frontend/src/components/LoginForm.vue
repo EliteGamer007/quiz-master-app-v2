@@ -48,24 +48,23 @@ export default {
           return;
         }
 
-        const { token, role, message } = result;
+        const { token, role, full_name } = result;
 
-        if (!token || !token.startsWith('ey')) {
+        if (!token) {
           alert('Received invalid token.');
           return;
         }
 
         localStorage.setItem('token', token);
         localStorage.setItem('role', role);
-
-        alert(message);
+        if (full_name) {
+          localStorage.setItem('user_name', full_name);
+        }
 
         if (role === 'admin') {
           this.$router.push('/admin_dashboard');
         } else if (role === 'user') {
           this.$router.push('/dashboard');
-        } else {
-          alert('Unknown role. Access denied.');
         }
       } catch (err) {
         alert('An error occurred during login.');

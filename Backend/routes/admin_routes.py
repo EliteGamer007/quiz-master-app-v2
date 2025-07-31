@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from models.models import db, User, Subject, Chapter, Quiz, Question, Score
 from .auth_routes import admin_required
-from sqlalchemy.orm import joinedload
-from sqlalchemy import or_, func
+from sqlalchemy.orm import joinedload, aliased
+from sqlalchemy import or_, func, cast, Float
 from werkzeug.utils import secure_filename
 from extensions import cache, limiter
 import datetime
@@ -34,17 +34,25 @@ def get_site_analytics():
 @limiter.limit("10/minute")
 @cache.cached(timeout=600)
 def get_leaderboard():
-    leaderboard = db.session.query(
+    question_count_sq = db.session.query(
+        Quiz.id, func.count(Question.id).label("question_count")
+    ).join(Question).group_by(Quiz.id).subquery()
+
+    leaderboard_data = db.session.query(
         User.full_name,
-        func.sum(Score.total_score).label('total_score'),
-        func.count(Score.id).label('quizzes_taken')
-    ).join(Score).group_by(User.id).order_by(func.sum(Score.total_score).desc()).limit(10).all()
-    
+        func.count(Score.id).label('quizzes_taken'),
+        func.avg(cast(Score.total_score, Float) / question_count_sq.c.question_count).label('average_score_ratio')
+    ).join(Score, User.id == Score.user_id)\
+     .join(question_count_sq, Score.quiz_id == question_count_sq.c.id)\
+     .group_by(User.id)\
+     .order_by(func.avg(cast(Score.total_score, Float) / question_count_sq.c.question_count).desc())\
+     .limit(10).all()
+
     return jsonify([{
         'name': user.full_name,
-        'total_score': user.total_score,
-        'quizzes_taken': user.quizzes_taken
-    } for user in leaderboard])
+        'quizzes_taken': user.quizzes_taken,
+        'average_score_ratio': round(user.average_score_ratio, 2) if user.average_score_ratio else 0
+    } for user in leaderboard_data])
 
 
 @admin_bp.route('/quiz/<int:quiz_id>/summary', methods=['GET'])

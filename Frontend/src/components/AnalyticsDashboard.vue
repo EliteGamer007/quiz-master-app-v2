@@ -30,24 +30,26 @@
 
         <div class="leaderboard-container">
           <h2>Leaderboard</h2>
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>User</th>
-                <th>Quizzes Taken</th>
-                <th>Total Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(user, index) in leaderboard" :key="index">
-                <td>{{ index + 1 }}</td>
-                <td>{{ user.name }}</td>
-                <td>{{ user.quizzes_taken }}</td>
-                <td>{{ user.total_score }}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-container">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>User</th>
+                  <th>Quizzes Taken</th>
+                  <th>Average Score Ratio</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(user, index) in leaderboard" :key="index">
+                  <td>{{ index + 1 }}</td>
+                  <td>{{ user.name }}</td>
+                  <td>{{ user.quizzes_taken }}</td>
+                  <td>{{ user.average_score_ratio }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -100,6 +102,7 @@ export default {
 
 <style scoped>
 @import '../assets/website_styles.css';
+
 .summary-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -118,11 +121,12 @@ export default {
     margin: 0;
 }
 .leaderboard-container {
-    background-color: #fff;
+    background-color: #6d28d9;
     padding: 1.5rem;
     border-radius: 8px;
 }
 .leaderboard-container h2 {
-    color: #343a40;
+    color: #fff;
+    margin-bottom: 1rem;
 }
 </style>

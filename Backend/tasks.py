@@ -1,16 +1,18 @@
 from celery_backend import celery
 from models.models import db, User, Score
 from datetime import datetime, timedelta
-from app import mail
 from flask_mail import Message
 import csv
 import os
-import eventlet
+from eventlet import tpool
 
 def send_email(to_email, subject, body):
-    print(f"Sending email to: {to_email}")
-    msg = Message(subject, recipients=[to_email], body=body)
-    eventlet.tpool.execute(mail.send, msg)
+    from app import create_app, mail
+    app = create_app()
+    with app.app_context():
+        print(f"Sending email to: {to_email}")
+        msg = Message(subject, recipients=[to_email], body=body)
+        tpool.execute(mail.send, msg)
 
 
 @celery.task(bind=True)

@@ -100,10 +100,19 @@ export default {
     },
     async handleQuizSubmit() {
       const { isEdit, data } = this.modal;
+
+      const submissionData = { ...data };
+      if (data.start_time) {
+        submissionData.start_time = new Date(data.start_time).toISOString();
+      } else {
+        submissionData.start_time = null;
+      }
+      
       const endpoint = isEdit ? `/api/admin/quizzes/${data.id}` : `/api/admin/chapters/${this.chapterData.chapter_id}/quizzes`;
       const method = isEdit ? 'PUT' : 'POST';
+      
       try {
-        await this.apiCall(endpoint, method, data);
+        await this.apiCall(endpoint, method, submissionData);
         await this.fetchChapterDetails();
         this.closeQuizModal();
       } catch (error) {

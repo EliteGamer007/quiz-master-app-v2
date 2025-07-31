@@ -34,7 +34,6 @@ def user_required(fn):
         return jsonify({'error': 'User access only'}), 403
     return wrapper
 
-# Routes
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -61,7 +60,8 @@ def login():
         return jsonify({
             'message': 'Login successful',
             'role': 'user',
-            'token': token
+            'token': token,
+            'full_name': user.full_name
         }), 200
 
     return jsonify({'error': 'Invalid credentials'}), 401

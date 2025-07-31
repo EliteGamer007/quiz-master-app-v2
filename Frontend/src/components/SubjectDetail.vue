@@ -4,6 +4,7 @@
       <div class="logo_box">QuizMaster</div>
       <div class="navbar-center">
         <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
+        <router-link to="/admin/analytics" class="nav_link">Analytics</router-link>
         <router-link to="/admin/users" class="nav_link">Users</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>

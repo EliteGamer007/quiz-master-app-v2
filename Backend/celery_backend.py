@@ -8,6 +8,8 @@ from celery.signals import worker_process_init
 celery = Celery(__name__)
 celery.config_from_object('celeryconfig')
 
+flask_app = None
+
 @worker_process_init.connect
 def init_app(**kwargs):
     from app import create_app
