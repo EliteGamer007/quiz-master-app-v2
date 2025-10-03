@@ -22,7 +22,7 @@ def create_app():
     app.config['MAIL_PORT'] = 587
     app.config['MAIL_USE_TLS'] = True
     app.config['MAIL_USERNAME'] = 'sanjeevevps@gmail.com'
-    app.config['MAIL_PASSWORD'] = 'lpud dnfz ljnt chct'
+    app.config['MAIL_PASSWORD'] = '££££££'
     app.config['MAIL_DEFAULT_SENDER'] = 'sanjeevevps@gmail.com'
     
     app.config['CACHE_TYPE'] = 'RedisCache'
@@ -53,4 +53,5 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
+
     app.run(debug=True, port=8000)
