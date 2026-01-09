@@ -5,8 +5,6 @@ from .auth_routes import user_required
 from datetime import datetime, timedelta
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, func
-from tasks import export_quiz_history_csv
-from celery.result import AsyncResult
 from extensions import cache, limiter
 import os
 import random
@@ -77,6 +75,7 @@ def get_user_progress():
 @user_required
 @limiter.limit("5/minute")
 def export_scores():
+    from tasks import export_quiz_history_csv
     user = get_jwt_identity()
     user_id = user.get('id')
     task = export_quiz_history_csv.delay(user_id)
@@ -86,6 +85,7 @@ def export_scores():
 @user_required
 @limiter.limit("60/minute")
 def get_export_status(task_id):
+    from celery.result import AsyncResult
     task_result = AsyncResult(task_id)
     result = {
         "task_id": task_id,

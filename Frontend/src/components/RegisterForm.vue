@@ -3,7 +3,9 @@
     <div class="container">
       <h1>Quiz Master</h1>
       <h2>Register</h2>
-      <form @submit.prevent="register">
+      
+      <!-- Step 1: Registration Form -->
+      <form v-if="!showOtpInput" @submit.prevent="register">
         <label for="full_name">Full Name</label>
         <input v-model="full_name" type="text" id="full_name" class="form-input" required />
 
@@ -31,9 +33,37 @@
           Please ask your parent or guardian to register for you.
         </small>
 
-        <button type="submit" :disabled="!canSubmit">Register</button>
+        <button type="submit" :disabled="!canSubmit || loading">{{ loading ? 'Please wait...' : 'Register' }}</button>
         <div class="link">
           <p>Already have an account? <a href="#" @click.prevent="$router.push('/')">Login</a></p>
+        </div>
+      </form>
+
+      <!-- Step 2: OTP Verification -->
+      <form v-if="showOtpInput" @submit.prevent="verifyOtp">
+        <div class="otp-info">
+          <p>📧 We've sent a verification code to <strong>{{ email }}</strong></p>
+          <p class="otp-subtitle">Please enter the 6-digit code to complete registration</p>
+        </div>
+        
+        <label for="otp">Enter OTP</label>
+        <input 
+          v-model="otp" 
+          type="text" 
+          id="otp" 
+          class="form-input otp-input" 
+          maxlength="6"
+          placeholder="000000"
+          required 
+          @input="validateOtpInput"
+        />
+
+        <button type="submit" :disabled="loading || otp.length !== 6">
+          {{ loading ? 'Verifying...' : 'Verify & Complete' }}
+        </button>
+        
+        <div class="link">
+          <p><a href="#" @click.prevent="resetForm">← Back to registration</a></p>
         </div>
       </form>
     </div>
@@ -53,7 +83,10 @@ export default {
       email: '',
       password: '',
       qualification: '',
-      age: ''
+      age: '',
+      otp: '',
+      showOtpInput: false,
+      loading: false
     };
   },
   computed: {
@@ -72,12 +105,18 @@ export default {
     }
   },
   methods: {
+    validateOtpInput() {
+      // Only allow digits
+      this.otp = this.otp.replace(/\D/g, '');
+    },
+    
     async register() {
       if (!this.canSubmit) {
         alert('Please complete all fields correctly before submitting.');
         return;
       }
 
+      this.loading = true;
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
@@ -92,16 +131,52 @@ export default {
         });
 
         const result = await res.json();
+        
         if (res.ok) {
-          alert(result.message);
-          this.$router.push('/');
+          alert(result.message || 'Verification code sent to your email');
+          this.showOtpInput = true;
         } else {
-          alert(result.message || 'Registration failed');
+          alert(result.message || result.error || 'Registration failed');
         }
       } catch (err) {
         alert('An error occurred during registration.');
         console.error(err);
+      } finally {
+        this.loading = false;
       }
+    },
+
+    async verifyOtp() {
+      this.loading = true;
+      try {
+        const res = await fetch('/api/auth/verify-registration-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: this.email,
+            otp: this.otp
+          })
+        });
+
+        const result = await res.json();
+        
+        if (res.ok) {
+          alert(result.message || 'Registration successful! You can now login.');
+          this.$router.push('/');
+        } else {
+          alert(result.error || result.message || 'OTP verification failed');
+        }
+      } catch (err) {
+        alert('An error occurred during verification.');
+        console.error(err);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    resetForm() {
+      this.otp = '';
+      this.showOtpInput = false;
     }
   }
 };

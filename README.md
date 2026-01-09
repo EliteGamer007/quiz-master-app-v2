@@ -1,50 +1,173 @@
-# quiz-master-app-v2
-Project for Modern App development II course in the diploma level of IITM BSc online course.
+# Quiz Master Application
 
-Instructions to Run
-You will need to open a separate terminal for each of the following services.
+A full-stack quiz application with secure email OTP-based 2-factor authentication.
 
-1)Run the Redis Server - Starts the message broker required for background tasks and caching.
-`sudo service redis-server start`
+## Features
 
-2)Run the Flask Backend - Starts the main API server.
-Navigate to the Backend folder.
-`python app.py`
+- ✅ User registration and authentication
+- ✅ Email OTP 2-factor authentication for users
+- ✅ Admin dashboard for quiz management
+- ✅ Subject and chapter organization
+- ✅ Quiz creation with multiple-choice questions
+- ✅ Score tracking and leaderboards
+- ✅ Quiz ratings and analytics
+- ✅ Timed quizzes with attempt tracking
 
-3)Run the Celery Worker - Starts the worker process that executes background jobs like sending emails and exporting files.
-Navigate to the Backend folder.
-`python run_worker.py`
+## Tech Stack
 
-4)Run the Celery Beat Scheduler - Starts the scheduler that triggers periodic tasks like daily reminders and monthly reports.
-`python run_beat.py`
+**Backend:**
+- Flask (Python web framework)
+- SQLite database
+- Flask-JWT-Extended for authentication
+- Flask-Mail for email OTP
+- Flask-SQLAlchemy for ORM
 
-5)Run the Vue.js Frontend - Starts the user interface.
+**Frontend:**
+- Vue.js 3
+- Vue Router
+- Axios for API calls
 
-The instructions to start the frontend development server are located in the README.md file inside the Frontend folder.
+## Setup Instructions
 
+### Backend Setup
 
-Milestone 0 completed with git tracker.
+1. Navigate to Backend directory:
+   ```bash
+   cd Backend
+   ```
 
-Milestone 2 completed with JWT based login and RBAC decorators enabled.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Milestone 1 completed with database schema creation.
+3. Configure environment variables:
+   ```bash
+   cp .env.example .env
+   ```
 
-Milestone 3 completed with admin dashboard creation and subject,chapter and quiz modification.
+4. Edit `.env` file with your credentials:
+   ```
+   MAIL_USERNAME=your-email@gmail.com
+   MAIL_PASSWORD=your-gmail-app-password
+   MAIL_DEFAULT_SENDER=your-email@gmail.com
+   ```
 
-Milestone 6 completed with quiz scheduling.
+   **Getting Gmail App Password:**
+   - Go to Google Account → Security
+   - Enable 2-Step Verification
+   - Create App Password for Mail
+   - Copy the 16-character password
 
-Milestone 4 completed with user dashboard implementation
+5. Start the backend server:
+   ```bash
+   python app.py
+   ```
+   Server runs on: http://localhost:8000
 
-Milestone 7 completed with celery based backend jobs
+### Frontend Setup
 
-Milestone 5 completed with quiz history and result summaries
+1. Navigate to Frontend directory:
+   ```bash
+   cd Frontend
+   ```
 
-Milestone 8 completed with search functionalities
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-Milestone 9 completed with csv export for users.
+3. Start the development server:
+   ```bash
+   npm run serve
+   ```
+   Application runs on: http://localhost:8080
 
-Milestone 10 completed with redis caching and optimization
+## Authentication
 
-Additional milestone 12 completed with analysis and leaderboard features.
+### Admin Login
+- **URL:** http://localhost:8080/login
+- **Email:** admin@quiz.com
+- **Password:** admin123
+- **Note:** Admin login does NOT require OTP
 
- Milestone 13-Final Submission bug fixes and error log updated
+### User Registration (with OTP)
+1. Fill in registration form (name, email, password, etc.)
+2. Submit registration
+3. Check email for 6-digit verification code
+4. Enter OTP to complete registration
+5. OTP valid for 5 minutes
+
+### User Login (with OTP)
+1. Enter email and password
+2. Check email for 6-digit OTP
+3. Enter OTP to complete login
+4. OTP valid for 5 minutes
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Request registration OTP
+- `POST /api/auth/verify-registration-otp` - Verify OTP and complete registration
+- `POST /api/auth/request-otp` - Request OTP for login
+- `POST /api/auth/verify-otp` - Verify OTP and complete login
+
+### Admin Routes
+- `GET /api/admin/subjects` - List all subjects
+- `POST /api/admin/subjects` - Create subject
+- `GET /api/admin/subjects/:id/chapters` - List chapters
+- `POST /api/admin/chapters` - Create chapter
+- `POST /api/admin/quizzes` - Create quiz
+
+### User Routes
+- `GET /api/user/subjects` - Browse subjects
+- `GET /api/user/quizzes/:id` - Get quiz details
+- `POST /api/user/quizzes/:id/submit` - Submit quiz answers
+- `GET /api/user/scores` - Get user scores
+
+## Security Features
+
+- **OTP Authentication:** 6-digit OTP with 5-minute expiration
+- **JWT Tokens:** Secure session management
+- **Password Hashing:** Werkzeug security
+- **CORS Protection:** Configured for localhost:8080
+- **Environment Variables:** Sensitive data protected
+
+## Troubleshooting
+
+**Email not sending:**
+- Verify Gmail App Password is correct
+- Check 2-Step Verification is enabled
+- Ensure .env file is properly configured
+
+**OTP expired:**
+- OTP valid for 5 minutes only
+- Request new OTP by logging in again
+
+**Database errors:**
+- Delete instance/quiz.db and restart
+
+**CORS errors:**
+- Ensure frontend runs on localhost:8080
+- Check CORS configuration in app.py
+
+## Project Milestones
+
+- ✓ Milestone 0: Git tracker implementation
+- ✓ Milestone 1: Database schema creation
+- ✓ Milestone 2: JWT-based login and RBAC decorators
+- ✓ Milestone 3: Admin dashboard and content management
+- ✓ Milestone 4: User dashboard implementation
+- ✓ Milestone 5: Quiz history and result summaries
+- ✓ Milestone 6: Quiz scheduling
+- ✓ Milestone 7: Celery-based background jobs
+- ✓ Milestone 8: Search functionalities
+- ✓ Milestone 9: CSV export for users
+- ✓ Milestone 10: Redis caching and optimization
+- ✓ Milestone 12: Analysis and leaderboard features
+- ✓ Milestone 13: Final submission with bug fixes
+- ✓ **NEW:** Email OTP 2-factor authentication
+
+## License
+
+Project for Modern App Development II course in the diploma level of IITM BSc online course.

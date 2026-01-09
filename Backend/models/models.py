@@ -8,6 +8,8 @@ class User(db.Model):
     password = db.Column(db.String(200), nullable=False)
     qualification = db.Column(db.String(100))
     age = db.Column(db.Integer)
+    otp = db.Column(db.String(6), nullable=True)
+    otp_created_at = db.Column(db.DateTime, nullable=True)
     scores = db.relationship('Score', backref='user', cascade='all, delete')
     ratings = db.relationship('Rating', backref='user', cascade='all, delete')
 

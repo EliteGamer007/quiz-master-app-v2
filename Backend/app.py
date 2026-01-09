@@ -4,13 +4,17 @@ from flask_jwt_extended import JWTManager
 from sqlalchemy.pool import NullPool
 from extensions import db, mail, cache, limiter
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = 'super-secret-key-ig'
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'super-secret-key-ig')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['JWT_SECRET_KEY'] = 'super-secret-key-jwt'
+    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'super-secret-key-jwt')
     app.config['JWT_IDENTITY_CLAIM'] = 'identity'
     
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
@@ -18,17 +22,19 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-    app.config['MAIL_PORT'] = 587
-    app.config['MAIL_USE_TLS'] = True
-    app.config['MAIL_USERNAME'] = 'sanjeevevps@gmail.com'
-    app.config['MAIL_PASSWORD'] = '££££££'
-    app.config['MAIL_DEFAULT_SENDER'] = 'sanjeevevps@gmail.com'
+    # Email configuration from environment variables
+    app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+    app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+    app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
+    app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+    app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_USERNAME'))
     
     app.config['CACHE_TYPE'] = 'RedisCache'
     app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/1'
     
-    app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/2'
+    # Temporarily disable Redis for rate limiter to avoid connection issues
+    # app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/2'
     
     CORS(app, supports_credentials=True, origins="http://localhost:8080")
 
