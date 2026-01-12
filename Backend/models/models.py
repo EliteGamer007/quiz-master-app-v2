@@ -5,6 +5,8 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    # Password stored as salted hash (200 chars to accommodate: "pbkdf2:sha256:260000$salt$hash")
+    # Never stores plain text - uses Werkzeug's generate_password_hash with random salt per user
     password = db.Column(db.String(200), nullable=False)
     qualification = db.Column(db.String(100))
     age = db.Column(db.Integer)
@@ -16,6 +18,7 @@ class User(db.Model):
 class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    # Password field for salted hash storage (same security as User model)
     password = db.Column(db.String(200), nullable=False)
 
 class Subject(db.Model):
@@ -68,6 +71,10 @@ class Score(db.Model):
     attempt_time = db.Column(db.Float)
     user_rank = db.Column(db.Integer)
     attempt_timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    # RSA digital signature: Proves result integrity and authenticity
+    # Signature is computed from: user_id|quiz_id|score|timestamp using SHA-256 + RSA-2048
+    # Prevents tampering: changing score/user/quiz will invalidate signature
+    digital_signature = db.Column(db.Text, nullable=True)  # Base64-encoded RSA signature
 
 class Rating(db.Model):
     id = db.Column(db.Integer, primary_key=True)

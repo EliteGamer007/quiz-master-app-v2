@@ -8,6 +8,8 @@ from sqlalchemy import or_, func
 from extensions import cache, limiter
 import os
 import random
+# RSA digital signature utilities for quiz result integrity
+from crypto_utils import sign_quiz_result, verify_quiz_result
 user_bp = Blueprint('user', __name__)
 
 @user_bp.route('/recommended-quizzes', methods=['GET'])
@@ -263,18 +265,31 @@ def submit_quiz(quiz_id):
             score += 1
     user = get_jwt_identity()
     user_id = user.get('id')
+    
+    # Create timestamp in ISO format for signature
+    attempt_timestamp = datetime.utcnow()
+    timestamp_str = attempt_timestamp.isoformat()
+    
+    # 🔐 DIGITAL SIGNATURE: Sign the quiz result using RSA
+    # Signing: user_id|quiz_id|score|timestamp with SHA-256 hash + RSA-2048 private key
+    # This proves the result came from trusted server and hasn't been tampered with
+    signature = sign_quiz_result(user_id, quiz_id, score, timestamp_str)
+    
     new_score = Score(
         user_id=user_id,
         quiz_id=quiz_id,
         total_score=score,
-        attempt_timestamp=datetime.utcnow()
+        attempt_timestamp=attempt_timestamp,
+        digital_signature=signature  # Store base64-encoded RSA signature
     )
     db.session.add(new_score)
     db.session.commit()
     return jsonify({
         'message': 'Quiz submitted successfully',
         'total_score': score,
-        'max_score': total_questions
+        'max_score': total_questions,
+        'digital_signature': signature,  # Return signature to user for verification
+        'signed': True
     }), 200
 
 @user_bp.route('/scores', methods=['GET'])
@@ -295,9 +310,74 @@ def get_user_scores():
             'quiz_title': score.quiz.title,
             'score': score.total_score,
             'max_score': len(score.quiz.questions),
-            'date': score.attempt_timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            'date': score.attempt_timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'digital_signature': score.digital_signature,  # Include signature for verification
+            'timestamp': score.attempt_timestamp.isoformat(),  # ISO format for verification
+            'user_id': score.user_id
         })
     return jsonify(score_data)
+
+@user_bp.route('/verify-signature/<int:score_id>', methods=['GET'])
+@user_required
+def verify_score_signature(score_id):
+    """
+    Verify the digital signature of a quiz result
+    Students can use this to confirm their result is authentic and unmodified
+    """
+    score = Score.query.get_or_404(score_id)
+    user = get_jwt_identity()
+    
+    # Only allow users to verify their own scores
+    if score.user_id != user.get('id'):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if not score.digital_signature:
+        return jsonify({
+            'verified': False,
+            'message': 'No digital signature found (legacy result)'
+        }), 200
+    
+    # Verify signature using public key
+    timestamp_str = score.attempt_timestamp.isoformat()
+    is_valid = verify_quiz_result(
+        score.user_id,
+        score.quiz_id,
+        score.total_score,
+        timestamp_str,
+        score.digital_signature
+    )
+    
+    return jsonify({
+        'verified': is_valid,
+        'score_id': score.id,
+        'user_id': score.user_id,
+        'quiz_id': score.quiz_id,
+        'score': score.total_score,
+        'timestamp': timestamp_str,
+        'signature': score.digital_signature[:50] + '...',  # Truncated for display
+        'message': '✅ Signature valid - Result is authentic and unmodified' if is_valid 
+                   else '❌ Signature invalid - Result may be tampered'
+    }), 200
+
+@user_bp.route('/public-key', methods=['GET'])
+def get_public_key():
+    """
+    Get the RSA public key for independent signature verification
+    Students can download this and verify results using external tools
+    No authentication required - public key is meant to be shared
+    """
+    from crypto_utils import get_public_key_pem
+    
+    public_key_pem = get_public_key_pem()
+    
+    return jsonify({
+        'public_key': public_key_pem,
+        'algorithm': 'RSA-2048',
+        'hash': 'SHA-256',
+        'padding': 'PSS',
+        'usage': 'Verify quiz result signatures',
+        'instructions': 'Use this public key to verify that quiz results are authentic and unmodified'
+    }), 200
 
 @user_bp.route('/search/subjects', methods=['GET'])
 @user_required

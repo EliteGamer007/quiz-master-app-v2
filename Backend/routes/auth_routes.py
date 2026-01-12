@@ -1,4 +1,7 @@
 from flask import Blueprint, request, jsonify
+# Werkzeug's password hashing functions use pbkdf2:sha256 algorithm with random salt
+# generate_password_hash: Creates hash with auto-generated salt embedded in output
+# check_password_hash: Extracts salt from stored hash to verify passwords securely
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import (
     create_access_token, jwt_required, get_jwt_identity
@@ -84,6 +87,8 @@ def request_otp():
 
     # User login - require OTP
     user = User.query.filter_by(email=email).first()
+    # Secure password verification: check_password_hash extracts the salt from the stored
+    # hash (format: method$salt$hash) and uses it to hash the input password for comparison
     if not user or not check_password_hash(user.password, password):
         return jsonify({'error': 'Invalid credentials'}), 401
 
@@ -236,11 +241,14 @@ def verify_registration_otp():
 
     # Create user account
     try:
+        # Password hashing with salt: generate_password_hash uses pbkdf2:sha256 with 260,000 iterations
+        # A random salt is generated and embedded in the hash (format: pbkdf2:sha256:260000$<salt>$<hash>)
+        # This protects against rainbow table attacks and ensures unique hashes for identical passwords
         hashed_password = generate_password_hash(registration_data['password'])
         new_user = User(
             full_name=registration_data['name'],
             email=registration_data['email'],
-            password=hashed_password,
+            password=hashed_password,  # Stored as: "pbkdf2:sha256:260000$randomsalt$hashedvalue"
             qualification=registration_data.get('qualification'),
             age=registration_data.get('age')
         )

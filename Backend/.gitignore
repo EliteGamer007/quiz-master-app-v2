@@ -49,6 +49,10 @@ celerybeat.pid
 # Logs
 *.log
 
+# RSA Keys - CRITICAL: Never commit private keys to version control
+keys/
+*.pem
+
 # OS
 .DS_Store
 Thumbs.db
