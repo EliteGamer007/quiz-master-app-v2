@@ -450,22 +450,346 @@ Expected output:
 
 ---
 
+## 3. Encoding Techniques
+
+### Overview
+Two encoding techniques are used to safely represent and transfer quiz data:
+- **Base64**: For quiz result verification tokens
+- **Hexadecimal (Base16)**: For quiz integrity hashes
+
+---
+
+### Base64 Encoding - Quiz Result Verification
+
+#### Purpose
+To safely represent quiz result data in a compact, transferable text format that can be:
+- Embedded in URLs
+- Stored in JSON
+- Transmitted via API
+- Displayed to users
+
+#### Tool Used
+Python built-in `base64` module
+
+#### Character Set
+Uses 64 characters: `A-Z`, `a-z`, `0-9`, `+`, `/` (with `=` for padding)
+
+#### How It Works
+
+**Encoding Quiz Results:**
+```python
+import base64
+from crypto_utils import encode_quiz_result_base64
+
+# Quiz result data
+user_id = 123
+quiz_id = 45
+score = 8.5
+timestamp = "2026-01-12T14:58:46.118041"
+
+# Encode to Base64
+verification_token = encode_quiz_result_base64(user_id, quiz_id, score, timestamp)
+# Result: "MTIzfDQ1fDguNXwyMDI2LTAxLTEyVDE0OjU4OjQ2LjExODA0MQ=="
+
+# Compact, URL-safe, easily transferable
+```
+
+**Decoding Quiz Results:**
+```python
+from crypto_utils import decode_quiz_result_base64
+
+# Decode from Base64
+decoded = decode_quiz_result_base64(verification_token)
+# Result:
+# {
+#     'user_id': 123,
+#     'quiz_id': 45,
+#     'score': 8.5,
+#     'timestamp': '2026-01-12T14:58:46.118041'
+# }
+```
+
+#### Code Locations
+
+**1. Database Field ([models/models.py](models/models.py))**
+```python
+class Score(db.Model):
+    # Base64 encoding: Compact verification token for result data
+    # Format: user_id|quiz_id|score|timestamp encoded in Base64 (URL-safe, transferable)
+    verification_token = db.Column(db.Text, nullable=True)
+```
+
+**2. Quiz Submission ([routes/user_routes.py](routes/user_routes.py))**
+```python
+# 📦 BASE64 ENCODING: Create verification token for quiz result
+# Encodes result data (user_id|quiz_id|score|timestamp) in Base64 format
+# Makes data compact, URL-safe, and easily transferable
+verification_token = encode_quiz_result_base64(user_id, quiz_id, score, timestamp_str)
+
+new_score = Score(
+    # ... other fields ...
+    verification_token=verification_token  # Store base64-encoded result data
+)
+```
+
+**3. Token Decoding Endpoint ([routes/user_routes.py](routes/user_routes.py))**
+```python
+@user_bp.route('/decode-token', methods=['POST'])
+def decode_verification_token():
+    """Decode Base64-encoded quiz result verification token"""
+    token = request.json.get('verification_token')
+    decoded = decode_quiz_result_base64(token)
+    return jsonify({'decoded_data': decoded})
+```
+
+#### API Usage
+
+**Submit Quiz (Returns Base64 token):**
+```http
+POST /api/user/quiz/45/submit
+
+Response:
+{
+  "total_score": 8.5,
+  "verification_token": "MTIzfDQ1fDguNXwyMDI2LTAxLTEyVDE0OjU4OjQ2LjExODA0MQ==",
+  "digital_signature": "FUeIhpkn..."
+}
+```
+
+**Decode Token:**
+```http
+POST /api/user/decode-token
+{
+  "verification_token": "MTIzfDQ1fDguNXwyMDI2LTAxLTEyVDE0OjU4OjQ2LjExODA0MQ=="
+}
+
+Response:
+{
+  "decoded_data": {
+    "user_id": 123,
+    "quiz_id": 45,
+    "score": 8.5,
+    "timestamp": "2026-01-12T14:58:46.118041"
+  },
+  "encoding_method": "Base64 (RFC 4648)"
+}
+```
+
+#### Benefits
+- ✅ **Compact**: ~33% larger than original (efficient)
+- ✅ **URL-Safe**: Can be included in URLs without encoding
+- ✅ **Transferable**: Safe for JSON, APIs, emails
+- ✅ **Reversible**: Easy to decode back to original data
+
+---
+
+### Hexadecimal Encoding - Quiz Integrity
+
+#### Purpose
+To represent binary integrity data (hash/signature) in a human-readable form for:
+- Detecting quiz content tampering
+- Verifying questions haven't been modified
+- Storing integrity checksums
+- Debugging and logging
+
+#### Tool Used
+Python built-in `bytes.hex()` and `bytes.fromhex()`
+
+#### Character Set
+Uses 16 characters: `0-9`, `a-f`
+
+Each byte (8 bits) = 2 hex characters
+
+#### How It Works
+
+**Generate Hexadecimal Integrity Hash:**
+```python
+import hashlib
+from crypto_utils import generate_quiz_integrity_hex
+
+# Quiz content
+quiz_id = 45
+questions_data = "1:What is Python?:A|2:What is Flask?:B|3:What is SQL?:C"
+
+# Generate SHA-256 hash in hexadecimal format
+integrity_hex = generate_quiz_integrity_hex(quiz_id, questions_data)
+# Result: "3bad936a49c8a12c5e631425657556371b3f318befa41edc693b4e67a7bcafd3"
+# Length: 64 hex characters (32 bytes = 256 bits)
+
+# Process:
+# 1. Combine quiz_id and questions_data
+# 2. SHA-256 hash → 32 bytes
+# 3. Convert to hex → 64 characters
+```
+
+**Verify Quiz Integrity:**
+```python
+from crypto_utils import verify_quiz_integrity_hex
+
+# Verify with expected hash
+is_valid = verify_quiz_integrity_hex(
+    quiz_id,
+    questions_data,
+    expected_hash="3bad936a49c8a12c..."
+)
+
+if is_valid:
+    print("✅ Quiz content intact")
+else:
+    print("❌ Quiz has been tampered with!")
+```
+
+**Convert Between Hex and Bytes:**
+```python
+from crypto_utils import hex_to_bytes
+
+# Hex string to bytes
+hex_string = "3bad936a49c8a12c"
+byte_data = hex_to_bytes(hex_string)
+# Result: b';\xad\x93jI\xc8\xa1,'
+
+# Bytes to hex (built-in)
+byte_data = b'Hello'
+hex_string = byte_data.hex()
+# Result: "48656c6c6f"
+```
+
+#### Code Locations
+
+**1. Database Field ([models/models.py](models/models.py))**
+```python
+class Quiz(db.Model):
+    # Hexadecimal (Base16) encoding: Quiz integrity hash for tamper detection
+    # SHA-256 hash of quiz_id + questions content, encoded as hex string (64 chars)
+    # Detects if questions/answers were modified after quiz creation
+    integrity_hash = db.Column(db.String(64), nullable=True)
+```
+
+**2. Quiz Integrity Generation ([routes/user_routes.py](routes/user_routes.py))**
+```python
+@user_bp.route('/quiz/<int:quiz_id>/integrity', methods=['GET'])
+def get_quiz_integrity(quiz_id):
+    """Get quiz integrity hash in hexadecimal format"""
+    quiz = Quiz.query.get_or_404(quiz_id)
+    
+    # Create questions data string
+    questions_data = ""
+    for q in quiz.questions:
+        questions_data += f"{q.id}:{q.question_text}:{q.correct_option}|"
+    
+    # Generate hexadecimal integrity hash
+    integrity_hex = generate_quiz_integrity_hex(quiz_id, questions_data)
+    
+    return jsonify({
+        'integrity_hash': integrity_hex,
+        'encoding_method': 'Hexadecimal (Base16)'
+    })
+```
+
+**3. Quiz Integrity Verification ([routes/user_routes.py](routes/user_routes.py))**
+```python
+@user_bp.route('/quiz/<int:quiz_id>/verify-integrity', methods=['POST'])
+def verify_quiz_integrity_endpoint(quiz_id):
+    """Verify quiz integrity using stored hexadecimal hash"""
+    quiz = Quiz.query.get_or_404(quiz_id)
+    
+    # Create current questions data
+    questions_data = ""
+    for q in quiz.questions:
+        questions_data += f"{q.id}:{q.question_text}:{q.correct_option}|"
+    
+    # Verify integrity
+    is_valid = verify_quiz_integrity_hex(quiz_id, questions_data, quiz.integrity_hash)
+    
+    return jsonify({
+        'verified': is_valid,
+        'message': '✅ Quiz intact' if is_valid else '❌ Quiz tampered'
+    })
+```
+
+#### API Usage
+
+**Get Quiz Integrity Hash:**
+```http
+GET /api/user/quiz/45/integrity
+
+Response:
+{
+  "quiz_id": 45,
+  "integrity_hash": "3bad936a49c8a12c5e631425657556371b3f318befa41edc693b4e67a7bcafd3",
+  "encoding_method": "Hexadecimal (Base16)",
+  "hash_algorithm": "SHA-256",
+  "hash_length": 64
+}
+```
+
+**Verify Quiz Integrity:**
+```http
+POST /api/user/quiz/45/verify-integrity
+
+Response:
+{
+  "verified": true,
+  "quiz_id": 45,
+  "stored_hash": "3bad936a49c8a12c...",
+  "message": "✅ Quiz content is intact (not tampered)"
+}
+```
+
+#### Benefits
+- ✅ **Human-Readable**: Easy to read and debug (0-9, a-f)
+- ✅ **Standard Format**: Widely used for hashes and checksums
+- ✅ **Tamper Detection**: Any content change = different hash
+- ✅ **Logging-Friendly**: Perfect for logs and diagnostics
+
+---
+
+### Base64 vs Hexadecimal Comparison
+
+| Feature | Base64 | Hexadecimal |
+|---------|--------|-------------|
+| **Character Set** | 64 chars (A-Z, a-z, 0-9, +, /) | 16 chars (0-9, a-f) |
+| **Size Overhead** | +33% (~1.33x original) | +100% (2x original) |
+| **Readability** | Less readable | More readable |
+| **Use Case** | Data transfer, URLs, APIs | Hashes, debugging, integrity |
+| **URL-Safe** | Yes (with modifications) | Yes |
+| **Python Module** | `base64` | `bytes.hex()` |
+| **Example** | `MTIzfDQ1fDguNQ==` | `3bad936a49c8a12c` |
+
+---
+
+### Testing Encodings
+
+```bash
+cd Backend
+python test_encoding.py
+```
+
+**Expected Output:**
+- ✅ Base64 encoding/decoding works
+- ✅ Hexadecimal hash generation works
+- ✅ Quiz integrity tamper detection works
+- ✅ Comparison shows both methods
+
+---
+
 ## Files Reference
 
 ### Core Implementation
-- `crypto_utils.py` - RSA signing/verification logic
+- `crypto_utils.py` - RSA signing/verification logic + encoding functions
 - `models/models.py` - Database schema with security fields
 - `routes/auth_routes.py` - Password hashing on registration/login
-- `routes/user_routes.py` - Digital signature on quiz submission
+- `routes/user_routes.py` - Digital signature + encoding on quiz operations
 
 ### Setup & Testing
 - `init_keys.py` - Generate RSA key pair (run once)
 - `test_signatures.py` - Test signature functionality
+- `test_encoding.py` - Test Base64 and Hexadecimal encoding
 - `keys/` - RSA key storage (gitignored)
 
 ### Security Configuration
 - `.gitignore` - Protects private keys from git
-- Database: Stores hashed passwords and signatures
+- Database: Stores hashed passwords, signatures, and encoded data
 
 ---
 
@@ -485,6 +809,20 @@ Expected output:
    - Prevents tampering with quiz results
    - Provides authenticity and non-repudiation
 
+3. **Base64 Encoding** ✅
+   - Purpose: Quiz result verification tokens
+   - Tool: Python built-in `base64` module
+   - Encodes: user_id|quiz_id|score|timestamp
+   - Benefits: Compact, URL-safe, transferable
+   - Stored in: `Score.verification_token` field
+
+4. **Hexadecimal Encoding** ✅
+   - Purpose: Quiz integrity hashes
+   - Tool: Python built-in `bytes.hex()` and `bytes.fromhex()`
+   - Encodes: SHA-256 hash of quiz content
+   - Benefits: Human-readable, tamper detection
+   - Stored in: `Quiz.integrity_hash` field
+
 ### Key Security Concepts Demonstrated
 
 - **Salting**: Each password gets unique random salt
@@ -493,6 +831,8 @@ Expected output:
 - **Digital Signatures**: Proves data origin and integrity
 - **Message Digest**: SHA-256 hashing before signing
 - **Tamper Detection**: Any change invalidates signature
+- **Base64 Encoding**: Compact binary-to-text encoding
+- **Hexadecimal Encoding**: Human-readable binary representation
 
 ---
 

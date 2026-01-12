@@ -46,6 +46,10 @@ class Quiz(db.Model):
     start_time = db.Column(db.DateTime, nullable=True)
     created_on = db.Column(db.DateTime, default=datetime.utcnow)
     avg_completion_time = db.Column(db.Float)
+    # Hexadecimal (Base16) encoding: Quiz integrity hash for tamper detection
+    # SHA-256 hash of quiz_id + questions content, encoded as hex string (64 chars)
+    # Detects if questions/answers were modified after quiz creation
+    integrity_hash = db.Column(db.String(64), nullable=True)  # Hex-encoded SHA-256 hash
     questions = db.relationship('Question', backref='quiz', cascade='all, delete')
     scores = db.relationship('Score', backref='quiz', cascade='all, delete')
     ratings = db.relationship('Rating', backref='quiz', cascade='all, delete')
@@ -75,6 +79,9 @@ class Score(db.Model):
     # Signature is computed from: user_id|quiz_id|score|timestamp using SHA-256 + RSA-2048
     # Prevents tampering: changing score/user/quiz will invalidate signature
     digital_signature = db.Column(db.Text, nullable=True)  # Base64-encoded RSA signature
+    # Base64 encoding: Compact verification token for result data
+    # Format: user_id|quiz_id|score|timestamp encoded in Base64 (URL-safe, transferable)
+    verification_token = db.Column(db.Text, nullable=True)  # Base64-encoded result data
 
 class Rating(db.Model):
     id = db.Column(db.Integer, primary_key=True)

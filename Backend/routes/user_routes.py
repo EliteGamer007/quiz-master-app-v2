@@ -9,7 +9,11 @@ from extensions import cache, limiter
 import os
 import random
 # RSA digital signature utilities for quiz result integrity
-from crypto_utils import sign_quiz_result, verify_quiz_result
+from crypto_utils import (
+    sign_quiz_result, verify_quiz_result,
+    encode_quiz_result_base64, decode_quiz_result_base64,  # Base64 encoding
+    generate_quiz_integrity_hex, verify_quiz_integrity_hex  # Hexadecimal encoding
+)
 user_bp = Blueprint('user', __name__)
 
 @user_bp.route('/recommended-quizzes', methods=['GET'])
@@ -275,12 +279,18 @@ def submit_quiz(quiz_id):
     # This proves the result came from trusted server and hasn't been tampered with
     signature = sign_quiz_result(user_id, quiz_id, score, timestamp_str)
     
+    # 📦 BASE64 ENCODING: Create verification token for quiz result
+    # Encodes result data (user_id|quiz_id|score|timestamp) in Base64 format
+    # Makes data compact, URL-safe, and easily transferable
+    verification_token = encode_quiz_result_base64(user_id, quiz_id, score, timestamp_str)
+    
     new_score = Score(
         user_id=user_id,
         quiz_id=quiz_id,
         total_score=score,
         attempt_timestamp=attempt_timestamp,
-        digital_signature=signature  # Store base64-encoded RSA signature
+        digital_signature=signature,  # Store base64-encoded RSA signature
+        verification_token=verification_token  # Store base64-encoded result data
     )
     db.session.add(new_score)
     db.session.commit()
@@ -289,6 +299,7 @@ def submit_quiz(quiz_id):
         'total_score': score,
         'max_score': total_questions,
         'digital_signature': signature,  # Return signature to user for verification
+        'verification_token': verification_token,  # Base64-encoded result token
         'signed': True
     }), 200
 
@@ -312,6 +323,7 @@ def get_user_scores():
             'max_score': len(score.quiz.questions),
             'date': score.attempt_timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'digital_signature': score.digital_signature,  # Include signature for verification
+            'verification_token': score.verification_token,  # Base64-encoded result data
             'timestamp': score.attempt_timestamp.isoformat(),  # ISO format for verification
             'user_id': score.user_id
         })
@@ -377,6 +389,99 @@ def get_public_key():
         'padding': 'PSS',
         'usage': 'Verify quiz result signatures',
         'instructions': 'Use this public key to verify that quiz results are authentic and unmodified'
+    }), 200
+
+@user_bp.route('/decode-token', methods=['POST'])
+@user_required
+def decode_verification_token():
+    """
+    Decode Base64-encoded quiz result verification token
+    Demonstrates Base64 encoding/decoding for quiz result data
+    """
+    data = request.get_json()
+    token = data.get('verification_token')
+    
+    if not token:
+        return jsonify({'error': 'Verification token required'}), 400
+    
+    # Decode Base64 token back to original data
+    decoded = decode_quiz_result_base64(token)
+    
+    if decoded:
+        return jsonify({
+            'success': True,
+            'decoded_data': decoded,
+            'encoding_method': 'Base64 (RFC 4648)',
+            'message': '✅ Token decoded successfully'
+        }), 200
+    else:
+        return jsonify({
+            'success': False,
+            'message': '❌ Invalid token format'
+        }), 400
+
+@user_bp.route('/quiz/<int:quiz_id>/integrity', methods=['GET'])
+@user_required
+def get_quiz_integrity(quiz_id):
+    """
+    Get quiz integrity hash in hexadecimal format
+    Demonstrates Hexadecimal encoding for quiz integrity verification
+    """
+    quiz = Quiz.query.get_or_404(quiz_id)
+    
+    # Create questions data string
+    questions_data = ""
+    for q in quiz.questions:
+        questions_data += f"{q.id}:{q.question_text}:{q.correct_option}|"
+    
+    # Generate hexadecimal integrity hash
+    integrity_hex = generate_quiz_integrity_hex(quiz_id, questions_data)
+    
+    # Update quiz with integrity hash if not set
+    if not quiz.integrity_hash:
+        quiz.integrity_hash = integrity_hex
+        db.session.commit()
+    
+    return jsonify({
+        'quiz_id': quiz_id,
+        'quiz_title': quiz.title,
+        'integrity_hash': integrity_hex,
+        'encoding_method': 'Hexadecimal (Base16)',
+        'hash_algorithm': 'SHA-256',
+        'hash_length': len(integrity_hex),
+        'message': '✅ Quiz integrity hash (hex) - detects content tampering'
+    }), 200
+
+@user_bp.route('/quiz/<int:quiz_id>/verify-integrity', methods=['POST'])
+@user_required
+def verify_quiz_integrity_endpoint(quiz_id):
+    """
+    Verify quiz integrity using stored hexadecimal hash
+    Checks if quiz content has been modified since creation
+    """
+    quiz = Quiz.query.get_or_404(quiz_id)
+    
+    if not quiz.integrity_hash:
+        return jsonify({
+            'verified': False,
+            'message': '❌ No integrity hash stored for this quiz'
+        }), 400
+    
+    # Create current questions data
+    questions_data = ""
+    for q in quiz.questions:
+        questions_data += f"{q.id}:{q.question_text}:{q.correct_option}|"
+    
+    # Verify integrity
+    is_valid = verify_quiz_integrity_hex(quiz_id, questions_data, quiz.integrity_hash)
+    
+    return jsonify({
+        'verified': is_valid,
+        'quiz_id': quiz_id,
+        'stored_hash': quiz.integrity_hash,
+        'encoding_method': 'Hexadecimal (Base16)',
+        'message': '✅ Quiz content is intact (not tampered)' if is_valid 
+                   else '❌ Quiz content has been modified!'
     }), 200
 
 @user_bp.route('/search/subjects', methods=['GET'])

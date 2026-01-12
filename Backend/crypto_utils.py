@@ -41,7 +41,6 @@ def generate_rsa_keys():
     public_key = private_key.public_key()
     
     # Serialize and save private key (PEM format, no encryption for simplicity)
-    # In production: encrypt with password using BestAvailableEncryption
     with open(PRIVATE_KEY_PATH, 'wb') as f:
         f.write(private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -56,13 +55,11 @@ def generate_rsa_keys():
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ))
     
-    print("✅ RSA key pair generated successfully!")
+    print("RSA key pair generated successfully!")
     print(f"Private key: {PRIVATE_KEY_PATH}")
     print(f"Public key: {PUBLIC_KEY_PATH}")
 
 def load_private_key():
-    """Load the server's private key for signing"""
-    # Generate keys if they don't exist
     if not os.path.exists(PRIVATE_KEY_PATH):
         generate_rsa_keys()
     
@@ -92,7 +89,6 @@ def create_message_digest(user_id, quiz_id, score, timestamp):
     Format: "user_id|quiz_id|score|timestamp"
     This message digest is what gets signed by RSA
     """
-    # Concatenate data with pipe delimiter
     message = f"{user_id}|{quiz_id}|{score}|{timestamp}"
     
     # SHA-256 hashing using hashlib (produces 256-bit/32-byte digest)
@@ -186,7 +182,7 @@ def verify_quiz_result(user_id, quiz_id, score, timestamp, signature_b64):
         return True  # Signature valid - data not tampered
     
     except Exception as e:
-        print(f"❌ Signature verification failed: {e}")
+        print(f"Signature verification failed: {e}")
         return False  # Signature invalid - data may be tampered
 
 def get_public_key_pem():
@@ -200,6 +196,145 @@ def get_public_key_pem():
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
     return pem.decode('utf-8')
+
+
+def encode_quiz_result_base64(user_id, quiz_id, score, timestamp):
+    """
+    Base64 Encoding - Quiz Result Verification
+    
+    Purpose: Safely represent quiz result data in a compact, transferable text format  
+    Base64 converts binary data into ASCII string using 64-character set:
+
+    Args:
+        user_id: User who took the quiz
+        quiz_id: Quiz identifier
+        score: Quiz score achieved
+        timestamp: When quiz was submitted
+    
+    Returns:
+        Base64-encoded string representing the quiz result
+    """
+    # Create result data string
+    result_data = f"{user_id}|{quiz_id}|{score}|{timestamp}"
+    
+    # Convert string to bytes
+    data_bytes = result_data.encode('utf-8')
+    
+    # Base64 encode - converts binary data to ASCII text
+    # Uses 64 characters: A-Z, a-z, 0-9, +, /
+    encoded = base64.b64encode(data_bytes)
+    
+    # Return as string (decode bytes to str)
+    return encoded.decode('utf-8')
+
+def decode_quiz_result_base64(encoded_data):
+    """
+    Decode Base64-encoded quiz result back to original data
+    
+    Args:
+        encoded_data: Base64-encoded string
+    
+    Returns:
+        Dictionary with decoded quiz result data
+    """
+    try:
+        # Decode from base64 to bytes
+        decoded_bytes = base64.b64decode(encoded_data)
+        
+        # Convert bytes to string
+        result_string = decoded_bytes.decode('utf-8')
+        
+        # Parse the data
+        parts = result_string.split('|')
+        if len(parts) == 4:
+            return {
+                'user_id': int(parts[0]),
+                'quiz_id': int(parts[1]),
+                'score': float(parts[2]),
+                'timestamp': parts[3]
+            }
+        return None
+    except Exception as e:
+        print(f"Error decoding base64 data: {e}")
+        return None
+
+def generate_quiz_integrity_hex(quiz_id, questions_data):
+    """
+    Hexadecimal (Base16) Encoding - Quiz Integrity Data
+    
+    Purpose: Represent binary integrity data (hash) in human-readable form
+    Tool: Python built-in bytes.hex() and bytes.fromhex()
+    
+    Hexadecimal uses 16 characters: 0-9, a-f
+    Each byte (8 bits) = 2 hex characters
+    
+    Use Case: Creating quiz fingerprint to detect if:
+    - Questions were modified
+    - Options were changed
+    - Correct answers were altered
+    - Quiz content was tampered with
+    
+    Args:
+        quiz_id: Quiz identifier
+        questions_data: String containing all quiz questions and answers
+    
+    Returns:
+        Hexadecimal string representing quiz integrity hash
+    """
+    # Combine quiz ID and questions data
+    quiz_content = f"{quiz_id}:{questions_data}"
+    
+    # Create SHA-256 hash of the content
+    hash_obj = hashlib.sha256(quiz_content.encode('utf-8'))
+    hash_bytes = hash_obj.digest()  # 32-byte binary hash
+    
+    # Convert bytes to hexadecimal string
+    # bytes.hex() converts each byte to 2 hex characters (0-9, a-f)
+    hex_string = hash_bytes.hex()
+    
+    return hex_string
+
+def verify_quiz_integrity_hex(quiz_id, questions_data, expected_hex):
+    try:
+        # Generate current hash
+        current_hex = generate_quiz_integrity_hex(quiz_id, questions_data)
+        
+        # Compare with expected hash
+        return current_hex == expected_hex
+    except Exception as e:
+        print(f"Error verifying quiz integrity: {e}")
+        return False
+
+def hex_to_bytes(hex_string):
+    return bytes.fromhex(hex_string)
+
+def create_quiz_verification_token(user_id, quiz_id, score, timestamp, signature):
+    """
+    Combined encoding example: Create comprehensive verification token
+    
+    Combines:
+    - Base64 encoding for quiz result data
+    - Hexadecimal encoding for signature bytes
+    
+    Returns:
+        Dictionary with both encoded formats
+    """
+    # Base64 encode the result data
+    result_token = encode_quiz_result_base64(user_id, quiz_id, score, timestamp)
+    
+    # If signature is already base64 string, convert to hex for demonstration
+    # Decode base64 signature to bytes, then encode as hex
+    sig_bytes = base64.b64decode(signature)
+    sig_hex = sig_bytes.hex()
+    
+    return {
+        'result_token_base64': result_token,  # Compact, URL-safe
+        'signature_hex': sig_hex[:64] + '...',  # Human-readable (truncated for display)
+        'encoding_methods': {
+            'result_data': 'Base64 (RFC 4648)',
+            'integrity_hash': 'Hexadecimal (Base16)'
+        }
+    }
 
 # Initialize keys on module import (only if running directly)
 if __name__ == "__main__":
