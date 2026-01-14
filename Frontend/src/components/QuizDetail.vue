@@ -89,11 +89,20 @@ export default {
       scoreChart: null
     };
   },
+  computed: {
+    isAdmin() {
+      return localStorage.getItem('role') === 'admin';
+    },
+    isQuizMaster() {
+      return localStorage.getItem('role') === 'quiz_master';
+    }
+  },
   methods: {
     async fetchQuizDetails() {
         const quizId = this.$route.params.quizId;
-        this.quiz = await this.apiCall(`/api/admin/quizzes/${quizId}`);
-        this.summary = await this.apiCall(`/api/admin/quiz/${quizId}/summary`);
+        const baseUrl = this.isQuizMaster ? '/api/quiz-master' : '/api/admin';
+        this.quiz = await this.apiCall(`${baseUrl}/quizzes/${quizId}`);
+        this.summary = await this.apiCall(`${baseUrl}/quiz/${quizId}/summary`);
         this.renderChart();
     },
     renderChart() {
@@ -152,7 +161,8 @@ export default {
     },
     async handleQuestionSubmit() {
         const { isEdit, data } = this.modal;
-        const endpoint = isEdit ? `/api/admin/questions/${data.id}` : `/api/admin/quizzes/${this.quiz.id}/questions`;
+        const baseUrl = this.isQuizMaster ? '/api/quiz-master' : '/api/admin';
+        const endpoint = isEdit ? `${baseUrl}/questions/${data.id}` : `${baseUrl}/quizzes/${this.quiz.id}/questions`;
         const method = isEdit ? 'PUT' : 'POST';
         const formData = new FormData();
         for (const key in data) {
@@ -177,7 +187,8 @@ export default {
         }
     },
     async deleteQuestion(id) {
-        await this.apiCall(`/api/admin/questions/${id}`, 'DELETE');
+        const baseUrl = this.isQuizMaster ? '/api/quiz-master' : '/api/admin';
+        await this.apiCall(`${baseUrl}/questions/${id}`, 'DELETE');
         this.quiz.questions = this.quiz.questions.filter(q => q.id !== id);
     }
   },

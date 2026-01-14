@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from models.models import db, User, Subject, Chapter, Quiz, Question, Score
-from .auth_routes import admin_required
+from .auth_routes import admin_required, admin_or_quiz_master_required
 from sqlalchemy.orm import joinedload, aliased
 from sqlalchemy import or_, func, cast, Float
 from werkzeug.utils import secure_filename
@@ -56,7 +56,7 @@ def get_leaderboard():
 
 
 @admin_bp.route('/quiz/<int:quiz_id>/summary', methods=['GET'])
-@admin_required
+@admin_or_quiz_master_required
 @limiter.limit("10/minute")
 @cache.cached(timeout=300)
 def get_quiz_summary(quiz_id):
@@ -154,27 +154,30 @@ def handle_subjects():
         db.session.commit()
         return jsonify({'id': new_subject.id, 'title': new_subject.title, 'description': new_subject.description}), 201
 
-@admin_bp.route('/subjects/<int:subject_id>', methods=['GET', 'PUT', 'DELETE'])
+@admin_bp.route('/subjects/<int:subject_id>', methods=['GET'])
+@admin_or_quiz_master_required
+@limiter.limit("60/minute")
+def get_subject_detail(subject_id):
+    @cache.cached(timeout=300)
+    def _get_subject_detail(id):
+        subject = Subject.query.get_or_404(id)
+        chapters = Chapter.query.filter_by(subject_id=subject.id).all()
+        chapters_data = { 'Beginner': [], 'Intermediate': [], 'Advanced': [] }
+        for chapter in chapters:
+            if chapter.level in chapters_data:
+                chapters_data[chapter.level].append({
+                    'id': chapter.id, 'heading': chapter.heading, 'description': chapter.description, 'level': chapter.level
+                })
+        
+        return jsonify({
+            'id': subject.id, 'title': subject.title, 'description': subject.description, 'chapters': chapters_data
+        })
+    return _get_subject_detail(subject_id)
+
+@admin_bp.route('/subjects/<int:subject_id>', methods=['PUT', 'DELETE'])
 @admin_required
 @limiter.limit("60/minute")
-def handle_subject(subject_id):
-    if request.method == 'GET':
-        @cache.cached(timeout=300)
-        def get_subject_detail(id):
-            subject = Subject.query.get_or_404(id)
-            chapters = Chapter.query.filter_by(subject_id=subject.id).all()
-            chapters_data = { 'Beginner': [], 'Intermediate': [], 'Advanced': [] }
-            for chapter in chapters:
-                if chapter.level in chapters_data:
-                    chapters_data[chapter.level].append({
-                        'id': chapter.id, 'heading': chapter.heading, 'description': chapter.description, 'level': chapter.level
-                    })
-            
-            return jsonify({
-                'id': subject.id, 'title': subject.title, 'description': subject.description, 'chapters': chapters_data
-            })
-        return get_subject_detail(subject_id)
-    
+def update_delete_subject(subject_id):
     cache.clear()
     subject = Subject.query.get_or_404(subject_id)
     if request.method == 'PUT':
@@ -219,59 +222,65 @@ def handle_chapter(chapter_id):
         db.session.commit()
         return jsonify({'message': 'Chapter deleted successfully'})
 
-@admin_bp.route('/chapters/<int:chapter_id>/quizzes', methods=['GET', 'POST'])
+@admin_bp.route('/chapters/<int:chapter_id>/quizzes', methods=['GET'])
+@admin_or_quiz_master_required
+@limiter.limit("60/minute")
+def get_chapter_quizzes(chapter_id):
+    @cache.cached(timeout=300)
+    def _get_quizzes_for_chapter(id):
+        chapter = Chapter.query.options(joinedload(Chapter.quizzes)).get_or_404(id)
+        quizzes_data = []
+        for quiz in chapter.quizzes:
+            quizzes_data.append({
+                'id': quiz.id, 'title': quiz.title, 'description': quiz.description,
+                'time_limit': quiz.time_limit, 'one_attempt_only': quiz.one_attempt_only,
+                'start_time': quiz.start_time.isoformat() if quiz.start_time else None
+            })
+        return jsonify({'chapter_id': chapter.id, 'chapter_heading': chapter.heading, 'quizzes': quizzes_data})
+    return _get_quizzes_for_chapter(chapter_id)
+
+@admin_bp.route('/chapters/<int:chapter_id>/quizzes', methods=['POST'])
 @admin_required
 @limiter.limit("60/minute")
-def handle_quizzes(chapter_id):
-    if request.method == 'GET':
-        @cache.cached(timeout=300)
-        def get_quizzes_for_chapter(id):
-            chapter = Chapter.query.options(joinedload(Chapter.quizzes)).get_or_404(id)
-            quizzes_data = []
-            for quiz in chapter.quizzes:
-                quizzes_data.append({
-                    'id': quiz.id, 'title': quiz.title, 'description': quiz.description,
-                    'time_limit': quiz.time_limit, 'one_attempt_only': quiz.one_attempt_only,
-                    'start_time': quiz.start_time.isoformat() if quiz.start_time else None
-                })
-            return jsonify({'chapter_id': chapter.id, 'chapter_heading': chapter.heading, 'quizzes': quizzes_data})
-        return get_quizzes_for_chapter(chapter_id)
+def create_chapter_quiz(chapter_id):
+    cache.clear()
+    data = request.get_json()
+    start_time = datetime.datetime.fromisoformat(data['start_time']) if data.get('start_time') else None
+    new_quiz = Quiz(
+        chapter_id=chapter_id, 
+        title=data['title'], 
+        description=data.get('description'), 
+        time_limit=data.get('time_limit'),
+        one_attempt_only=data.get('one_attempt_only', False),
+        start_time=start_time,
+        created_by_quiz_master_id=None  # Admin-created quizzes have no quiz master owner
+    )
+    db.session.add(new_quiz)
+    db.session.commit()
+    return jsonify({'id': new_quiz.id}), 201
 
-    if request.method == 'POST':
-        cache.clear()
-        data = request.get_json()
-        start_time = datetime.datetime.fromisoformat(data['start_time']) if data.get('start_time') else None
-        new_quiz = Quiz(
-            chapter_id=chapter_id, 
-            title=data['title'], 
-            description=data.get('description'), 
-            time_limit=data.get('time_limit'),
-            one_attempt_only=data.get('one_attempt_only', False),
-            start_time=start_time
-        )
-        db.session.add(new_quiz)
-        db.session.commit()
-        return jsonify({'id': new_quiz.id}), 201
+@admin_bp.route('/quizzes/<int:quiz_id>', methods=['GET'])
+@admin_or_quiz_master_required
+@limiter.limit("60/minute")
+def get_quiz_detail(quiz_id):
+    @cache.cached(timeout=300)
+    def _get_quiz_detail(id):
+        quiz = Quiz.query.get_or_404(id)
+        questions = [{
+            'id': q.id, 
+            'question_text': q.question_text, 
+            'image_url': get_file_url(q.image_url),
+            'option_a': q.option_a, 'option_b': q.option_b, 
+            'option_c': q.option_c, 'option_d': q.option_d, 
+            'correct_option': q.correct_option
+        } for q in quiz.questions]
+        return jsonify({'id': quiz.id, 'title': quiz.title, 'description': quiz.description, 'questions': questions})
+    return _get_quiz_detail(quiz_id)
 
-@admin_bp.route('/quizzes/<int:quiz_id>', methods=['GET', 'PUT', 'DELETE'])
+@admin_bp.route('/quizzes/<int:quiz_id>', methods=['PUT', 'DELETE'])
 @admin_required
 @limiter.limit("60/minute")
-def handle_quiz(quiz_id):
-    if request.method == 'GET':
-        @cache.cached(timeout=300)
-        def get_quiz_detail(id):
-            quiz = Quiz.query.get_or_404(id)
-            questions = [{
-                'id': q.id, 
-                'question_text': q.question_text, 
-                'image_url': get_file_url(q.image_url),
-                'option_a': q.option_a, 'option_b': q.option_b, 
-                'option_c': q.option_c, 'option_d': q.option_d, 
-                'correct_option': q.correct_option
-            } for q in quiz.questions]
-            return jsonify({'id': quiz.id, 'title': quiz.title, 'description': quiz.description, 'questions': questions})
-        return get_quiz_detail(quiz_id)
-
+def update_delete_quiz(quiz_id):
     cache.clear()
     quiz = Quiz.query.get_or_404(quiz_id)
     if request.method == 'PUT':

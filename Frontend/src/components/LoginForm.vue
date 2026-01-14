@@ -88,12 +88,21 @@ export default {
           return;
         }
 
-        // Check if admin (no OTP required)
+        // Check if admin or quiz_master (no OTP required)
         if (result.requires_otp === false) {
-          const { token, role } = result;
+          const { token, role, full_name } = result;
           localStorage.setItem('token', token);
           localStorage.setItem('role', role);
-          this.$router.push('/admin_dashboard');
+          if (full_name) {
+            localStorage.setItem('user_name', full_name);
+          }
+          
+          // Redirect based on role
+          if (role === 'admin') {
+            this.$router.push('/admin_dashboard');
+          } else if (role === 'quiz_master') {
+            this.$router.push('/admin_dashboard'); // Quiz masters use admin dashboard with restricted access
+          }
           return;
         }
 

@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import (
     create_access_token, jwt_required, get_jwt_identity
 )
-from models.models import db, User
+from models.models import db, User, Admin, QuizMaster
 from functools import wraps
 import datetime
 import random
@@ -29,6 +29,28 @@ def admin_required(fn):
         if identity != 'admin':
             return jsonify({'error': 'Admin access only'}), 403
         return fn(*args, **kwargs)
+    return wrapper
+
+def quiz_master_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        identity = get_jwt_identity()
+        if not isinstance(identity, dict) or identity.get('role') != 'quiz_master':
+            return jsonify({'error': 'Quiz Master access only'}), 403
+        return fn(*args, **kwargs)
+    return wrapper
+
+def admin_or_quiz_master_required(fn):
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        identity = get_jwt_identity()
+        if identity == 'admin':
+            return fn(*args, **kwargs)
+        if isinstance(identity, dict) and identity.get('role') == 'quiz_master':
+            return fn(*args, **kwargs)
+        return jsonify({'error': 'Admin or Quiz Master access required'}), 403
     return wrapper
 
 def user_required(fn):
@@ -82,6 +104,24 @@ def request_otp():
             'message': 'Admin login successful',
             'role': 'admin',
             'token': token,
+            'requires_otp': False
+        }), 200
+
+    # Quiz Master login - no OTP required
+    quiz_master = QuizMaster.query.filter_by(email=email).first()
+    if quiz_master and check_password_hash(quiz_master.password, password):
+        identity = {
+            'id': quiz_master.id,
+            'email': quiz_master.email,
+            'role': 'quiz_master',
+            'full_name': quiz_master.full_name
+        }
+        token = create_access_token(identity=identity, expires_delta=datetime.timedelta(hours=2))
+        return jsonify({
+            'message': 'Quiz Master login successful',
+            'role': 'quiz_master',
+            'token': token,
+            'full_name': quiz_master.full_name,
             'requires_otp': False
         }), 200
 

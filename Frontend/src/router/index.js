@@ -20,13 +20,13 @@ const routes = [
     path: '/admin_dashboard',
     name: 'AdminDashboard',
     component: AdminDashboard,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, roles: ['admin', 'quiz_master'] }
   },
   {
     path: '/admin/analytics',
     name: 'AnalyticsDashboard',
     component: AnalyticsDashboard,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, roles: ['admin', 'quiz_master'] }
   },
   {
     path: '/dashboard',
@@ -68,19 +68,19 @@ const routes = [
     path: '/subjects/:subjectId',
     name: 'SubjectDetail',
     component: SubjectDetail,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, roles: ['admin', 'quiz_master'] }
   },
   {
     path: '/chapters/:chapterId',
     name: 'ChapterDetail',
     component: ChapterDetail,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, roles: ['admin', 'quiz_master'] }
   },
   {
     path: '/quizzes/:quizId',
     name: 'QuizDetail',
     component: QuizDetail,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, roles: ['admin', 'quiz_master'] }
   }
 ];
 
@@ -100,7 +100,12 @@ router.beforeEach((to, from, next) => {
       const decodedPayload = JSON.parse(atob(payloadBase64));
       const identity = decodedPayload.identity;
       const userRole = typeof identity === 'object' && identity.role ? identity.role : identity;
+      
+      // Check role permissions (support both single role and array of roles)
       if (to.meta.role && userRole !== to.meta.role) {
+        return next('/');
+      }
+      if (to.meta.roles && !to.meta.roles.includes(userRole)) {
         return next('/');
       }
     } catch (e) {

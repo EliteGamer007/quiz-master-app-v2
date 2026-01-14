@@ -5,7 +5,7 @@
       <div class="navbar-center">
         <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
         <router-link to="/admin/analytics" class="nav_link">Analytics</router-link>
-        <router-link to="/admin/users" class="nav_link">Users</router-link>
+        <router-link v-if="isAdmin" to="/admin/users" class="nav_link">Users</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
     </div>
@@ -21,7 +21,7 @@
         <div v-for="level in chapterLevels" :key="level" class="chapter-level-section">
           <div class="level-header">
             <h3>{{ level }} Chapters</h3>
-            <button class="primary-btn" @click="openChapterModal(level)">+ Add Chapter</button>
+            <button v-if="isAdmin" class="primary-btn" @click="openChapterModal(level)">+ Add Chapter</button>
           </div>
           <hr class="divider">
           <div class="admin-grid">
@@ -30,7 +30,7 @@
                   <h4>{{ chapter.heading }}</h4>
                   <p>{{ chapter.description }}</p>
               </router-link>
-              <div class="card-actions">
+              <div v-if="isAdmin" class="card-actions">
                   <button class="edit-btn" @click="openChapterModal(level, chapter)">Edit</button>
                   <button class="delete-btn" @click="confirmDeleteChapter(chapter)">Delete</button>
               </div>
@@ -66,6 +66,14 @@ export default {
         data: { id: null, heading: '', description: '', level: '' }
       }
     };
+  },
+  computed: {
+    isAdmin() {
+      return localStorage.getItem('role') === 'admin';
+    },
+    isQuizMaster() {
+      return localStorage.getItem('role') === 'quiz_master';
+    }
   },
   methods: {
     logout() {

@@ -47,10 +47,12 @@ def create_app():
     from routes.auth_routes import auth_bp
     from routes.admin_routes import admin_bp
     from routes.user_routes import user_bp
+    from routes.quiz_master_routes import quiz_master_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(user_bp, url_prefix='/api/user')
+    app.register_blueprint(quiz_master_bp, url_prefix='/api/quiz-master')
     
     with app.app_context():
         db.create_all()

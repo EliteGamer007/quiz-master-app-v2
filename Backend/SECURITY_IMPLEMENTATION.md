@@ -1,7 +1,17 @@
 # 🔐 Security Implementation Guide
-## Password Hashing with Salt & RSA Digital Signatures
+## Comprehensive Security & Access Control Documentation
 
-This document explains the two key security features implemented in this Quiz Master application.
+This document explains all security features implemented in the Quiz Master Application, including password hashing, RSA digital signatures, encoding techniques, and **Role-Based Access Control (RBAC)**.
+
+---
+
+## Table of Contents
+1. [Password Hashing with Salt](#1-password-hashing-with-salt)
+2. [RSA Digital Signatures](#2-rsa-digital-signatures)
+3. [Encoding Techniques](#3-encoding-techniques)
+4. [Access Control Matrix (ACM)](#4-access-control-matrix-acm)
+5. [Setup Instructions](#setup-instructions)
+6. [Security Summary](#security-summary)
 
 ---
 
@@ -793,6 +803,49 @@ python test_encoding.py
 
 ---
 
+## 4. Access Control Matrix (ACM)
+
+### Overview
+The application implements **Role-Based Access Control (RBAC)** with three distinct roles providing comprehensive access control across all system resources.
+
+For complete Access Control documentation including:
+- Access Control Matrix (3 subjects × 7+ objects)
+- Policy definitions and justifications
+- Programmatic enforcement details
+- API endpoint security
+- Test cases
+
+**See: [ACCESS_CONTROL.md](ACCESS_CONTROL.md)**
+
+### Quick Reference
+
+#### Roles (Subjects)
+1. **User** - Take quizzes, view own scores (OTP authentication)
+2. **Quiz Master** - Create/manage own quizzes (No OTP)
+3. **Admin** - Full system access (No OTP)
+
+#### Objects (Resources)
+1. Subjects, 2. Chapters, 3. Quizzes, 4. Questions, 5. Users, 6. Scores, 7. Analytics
+
+#### Key Access Policies
+- **Users**: Read-only access to public content, full access to own data
+- **Quiz Masters**: Create/modify own quizzes only, view own analytics
+- **Admin**: Full CRUD access to all resources
+
+#### Implementation
+```python
+# Role-based decorators
+@admin_required           # Admin-only endpoints
+@user_required            # User-only endpoints
+@quiz_master_required     # Quiz Master-only endpoints
+@admin_or_quiz_master_required  # Shared endpoints
+
+# Ownership verification
+Quiz.query.filter_by(id=quiz_id, created_by_quiz_master_id=qm_id).first_or_404()
+```
+
+---
+
 ## Assignment Notes
 
 ### What's Implemented
@@ -823,6 +876,13 @@ python test_encoding.py
    - Benefits: Human-readable, tamper detection
    - Stored in: `Quiz.integrity_hash` field
 
+5. **Access Control Matrix (ACM)** ✅
+   - **3 Subjects**: User, Quiz Master, Admin
+   - **7+ Objects**: Subjects, Chapters, Quizzes, Questions, Users, Scores, Analytics
+   - **Policy Definitions**: Clear justifications for each access right
+   - **Programmatic Enforcement**: Decorators + database filters + ownership checks
+   - See [ACCESS_CONTROL.md](ACCESS_CONTROL.md) for complete documentation
+
 ### Key Security Concepts Demonstrated
 
 - **Salting**: Each password gets unique random salt
@@ -833,8 +893,12 @@ python test_encoding.py
 - **Tamper Detection**: Any change invalidates signature
 - **Base64 Encoding**: Compact binary-to-text encoding
 - **Hexadecimal Encoding**: Human-readable binary representation
+- **Role-Based Access Control (RBAC)**: Three-tier permission system
+- **Principle of Least Privilege**: Minimum necessary permissions per role
+- **Separation of Duties**: Content creation vs. user management
+- **Defense in Depth**: Multiple security layers
 
 ---
 
-**Implementation Date**: January 12, 2026  
+**Implementation Date**: January 15, 2026  
 **Status**: Fully Implemented and Tested ✅

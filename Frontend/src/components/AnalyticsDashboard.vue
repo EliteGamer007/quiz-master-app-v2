@@ -5,7 +5,7 @@
       <div class="navbar-center">
         <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
         <router-link to="/admin/analytics" class="nav_link">Analytics</router-link>
-        <router-link to="/admin/users" class="nav_link">Users</router-link>
+        <router-link to="/admin/users" class="nav_link" v-if="isAdmin">Users</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
     </div>
@@ -14,7 +14,7 @@
       <div v-if="isLoading">Loading analytics...</div>
       <div v-else>
         <div class="summary-grid">
-          <div class="summary-card">
+          <div class="summary-card" v-if="isAdmin">
             <h3>{{ analytics.total_users }}</h3>
             <p>Total Users</p>
           </div>
@@ -66,6 +66,14 @@ export default {
       isLoading: true
     };
   },
+  computed: {
+    isAdmin() {
+      return localStorage.getItem('role') === 'admin';
+    },
+    isQuizMaster() {
+      return localStorage.getItem('role') === 'quiz_master';
+    }
+  },
   methods: {
     logout() {
       localStorage.removeItem('token');
@@ -74,9 +82,10 @@ export default {
     async fetchData() {
       this.isLoading = true;
       try {
+        const baseUrl = this.isQuizMaster ? '/api/quiz-master' : '/api/admin';
         const [analyticsRes, leaderboardRes] = await Promise.all([
-          this.apiCall('/api/admin/analytics'),
-          this.apiCall('/api/admin/leaderboard')
+          this.apiCall(`${baseUrl}/analytics`),
+          this.apiCall(`${baseUrl}/leaderboard`)
         ]);
         this.analytics = analyticsRes;
         this.leaderboard = leaderboardRes;

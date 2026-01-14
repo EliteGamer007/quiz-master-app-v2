@@ -4,7 +4,7 @@
       <div class="logo_box">QuizMaster</div>
        <div class="navbar-center">
         <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
-        <router-link to="/admin/users" class="nav_link">Users</router-link>
+        <router-link v-if="isAdmin" to="/admin/users" class="nav_link">Users</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
     </div>
@@ -23,7 +23,7 @@
           </router-link>
            <div class="card-actions">
             <button class="edit-btn" @click="openQuizModal(quiz)">Edit</button>
-            <button class="delete-btn" @click="confirmDeleteQuiz(quiz)">Delete</button>
+            <button v-if="isAdmin" class="delete-btn" @click="confirmDeleteQuiz(quiz)">Delete</button>
           </div>
         </div>
       </div>
@@ -62,6 +62,14 @@ export default {
       }
     };
   },
+  computed: {
+    isAdmin() {
+      return localStorage.getItem('role') === 'admin';
+    },
+    isQuizMaster() {
+      return localStorage.getItem('role') === 'quiz_master';
+    }
+  },
   methods: {
     logout() {
       localStorage.removeItem('token');
@@ -78,7 +86,10 @@ export default {
     async fetchChapterDetails() {
       const chapterId = this.$route.params.chapterId;
       try {
-        this.chapterData = await this.apiCall(`/api/admin/chapters/${chapterId}/quizzes`);
+        const endpoint = this.isQuizMaster 
+          ? `/api/quiz-master/chapters/${chapterId}/quizzes`
+          : `/api/admin/chapters/${chapterId}/quizzes`;
+        this.chapterData = await this.apiCall(endpoint);
       } catch (err) {
         console.error(err);
       }
@@ -108,8 +119,18 @@ export default {
         submissionData.start_time = null;
       }
       
-      const endpoint = isEdit ? `/api/admin/quizzes/${data.id}` : `/api/admin/chapters/${this.chapterData.chapter_id}/quizzes`;
-      const method = isEdit ? 'PUT' : 'POST';
+      let endpoint, method;
+      if (this.isQuizMaster) {
+        endpoint = isEdit 
+          ? `/api/quiz-master/quizzes/${data.id}` 
+          : `/api/quiz-master/chapters/${this.chapterData.chapter_id}/quizzes`;
+        method = isEdit ? 'PUT' : 'POST';
+      } else {
+        endpoint = isEdit 
+          ? `/api/admin/quizzes/${data.id}` 
+          : `/api/admin/chapters/${this.chapterData.chapter_id}/quizzes`;
+        method = isEdit ? 'PUT' : 'POST';
+      }
       
       try {
         await this.apiCall(endpoint, method, submissionData);
@@ -117,6 +138,7 @@ export default {
         this.closeQuizModal();
       } catch (error) {
         console.error(error);
+        alert('Error saving quiz. Please try again.');
       }
     },
     confirmDeleteQuiz(quiz) {

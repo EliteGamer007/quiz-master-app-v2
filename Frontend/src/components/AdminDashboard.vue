@@ -5,7 +5,7 @@
       <div class="navbar-center">
         <router-link to="/admin_dashboard" class="nav_link">Dashboard</router-link>
         <router-link to="/admin/analytics" class="nav_link">Analytics</router-link>
-        <router-link to="/admin/users" class="nav_link">Users</router-link>
+        <router-link v-if="isAdmin" to="/admin/users" class="nav_link">Users</router-link>
       </div>
       <a href="#" class="logout_link" @click.prevent="logout">Logout</a>
     </div>
@@ -13,7 +13,7 @@
     <div class="page_wrapper">
       <div class="header-controls">
         <h2>{{ searchResults.length ? 'Search Results' : 'Subjects' }}</h2>
-        <button class="primary-btn" @click="openModal()">Add Subject</button>
+        <button v-if="isAdmin" class="primary-btn" @click="openModal()">Add Subject</button>
       </div>
 
       <div class="search-bar">
@@ -35,7 +35,7 @@
             <h3>{{ subject.title }}</h3>
             <p>{{ subject.description }}</p>
           </router-link>
-          <div class="card-actions">
+          <div v-if="isAdmin" class="card-actions">
             <button class="edit-btn" @click="openModal(subject)">Edit</button>
             <button class="delete-btn" @click="confirmDelete(subject)">Delete</button>
           </div>
@@ -72,6 +72,14 @@ export default {
       }
     };
   },
+  computed: {
+    isAdmin() {
+      return localStorage.getItem('role') === 'admin';
+    },
+    isQuizMaster() {
+      return localStorage.getItem('role') === 'quiz_master';
+    }
+  },
   methods: {
     logout() {
       localStorage.removeItem('token');
@@ -90,7 +98,9 @@ export default {
     },
     async fetchSubjects() {
       try {
-        this.subjects = await this.apiCall('/api/admin/subjects');
+        // Both admin and quiz master can view subjects
+        const endpoint = this.isQuizMaster ? '/api/quiz-master/subjects' : '/api/admin/subjects';
+        this.subjects = await this.apiCall(endpoint);
       } catch (error) {
         console.error(error);
       }
@@ -101,12 +111,26 @@ export default {
         return;
       }
       try {
-        this.searchResults = await this.apiCall(`/api/admin/search/quizzes?q=${this.searchQuery}`);
+        // Only admin has search endpoint, quiz masters see their own quizzes
+        if (this.isAdmin) {
+          this.searchResults = await this.apiCall(`/api/admin/search/quizzes?q=${this.searchQuery}`);
+        } else {
+          // For quiz master, filter their own quizzes
+          const quizzes = await this.apiCall('/api/quiz-master/quizzes');
+          this.searchResults = quizzes.filter(q => 
+            q.title.toLowerCase().includes(this.searchQuery.toLowerCase())
+          );
+        }
       } catch (error) {
         console.error(error);
       }
     },
     openModal(subject = null) {
+      // Quiz masters cannot create/edit subjects
+      if (this.isQuizMaster) {
+        alert('Quiz Masters can create quizzes but cannot modify subjects.');
+        return;
+      }
       this.modal.isEdit = !!subject;
       this.modal.data = subject ? { ...subject } : { id: null, title: '', description: '' };
       this.showSubjectModal = true;

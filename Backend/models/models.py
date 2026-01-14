@@ -21,6 +21,14 @@ class Admin(db.Model):
     # Password field for salted hash storage (same security as User model)
     password = db.Column(db.String(200), nullable=False)
 
+class QuizMaster(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    # Password stored as salted hash (same security as User/Admin models)
+    password = db.Column(db.String(200), nullable=False)
+    quizzes = db.relationship('Quiz', backref='creator', lazy=True)
+
 class Subject(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
@@ -45,6 +53,8 @@ class Quiz(db.Model):
     one_attempt_only = db.Column(db.Boolean, default=False)
     start_time = db.Column(db.DateTime, nullable=True)
     created_on = db.Column(db.DateTime, default=datetime.utcnow)
+    # Track quiz ownership for Access Control (null for legacy quizzes created by admin)
+    created_by_quiz_master_id = db.Column(db.Integer, db.ForeignKey('quiz_master.id'), nullable=True)
     avg_completion_time = db.Column(db.Float)
     # Hexadecimal (Base16) encoding: Quiz integrity hash for tamper detection
     # SHA-256 hash of quiz_id + questions content, encoded as hex string (64 chars)
