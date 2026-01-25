@@ -73,7 +73,10 @@ class Question(db.Model):
     option_b = db.Column(db.String(255), nullable=False)
     option_c = db.Column(db.String(255), nullable=False)
     option_d = db.Column(db.String(255), nullable=False)
-    correct_option = db.Column(db.String(1), nullable=False)
+    # AES-256-CBC encrypted correct answer (at-rest encryption)
+    # Stores: Base64(IV + AES_encrypted(answer)) - approximately 44 characters
+    # Decrypted only server-side during scoring - client never sees correct answer
+    correct_option = db.Column(db.String(100), nullable=False)
     difficulty = db.Column(db.String(20))
     description = db.Column(db.Text)
 

@@ -5,6 +5,7 @@ from flask_jwt_extended import get_jwt_identity
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func, cast, Float
 from extensions import cache, limiter
+from crypto_utils import encrypt_answer, decrypt_answer
 import datetime
 
 quiz_master_bp = Blueprint('quiz_master', __name__)
@@ -224,7 +225,8 @@ def handle_quiz(quiz_id):
             'option_b': q.option_b,
             'option_c': q.option_c,
             'option_d': q.option_d,
-            'correct_option': q.correct_option,
+            # 🔓 DECRYPT: Quiz Master can see correct answers for their own quizzes
+            'correct_option': decrypt_answer(q.correct_option),
             'difficulty': q.difficulty,
             'description': q.description
         } for q in quiz.questions]
@@ -269,6 +271,7 @@ def add_question(quiz_id):
         .first_or_404()
     
     data = request.get_json()
+    # 🔐 ENCRYPT: Encrypt correct answer before storing
     new_question = Question(
         quiz_id=quiz_id,
         question_text=data['question_text'],
@@ -277,7 +280,7 @@ def add_question(quiz_id):
         option_b=data['option_b'],
         option_c=data['option_c'],
         option_d=data['option_d'],
-        correct_option=data['correct_option'],
+        correct_option=encrypt_answer(data['correct_option']),
         difficulty=data.get('difficulty'),
         description=data.get('description')
     )
@@ -311,7 +314,8 @@ def handle_question(question_id):
         question.option_b = data['option_b']
         question.option_c = data['option_c']
         question.option_d = data['option_d']
-        question.correct_option = data['correct_option']
+        # 🔐 ENCRYPT: Encrypt updated correct answer
+        question.correct_option = encrypt_answer(data['correct_option'])
         question.difficulty = data.get('difficulty')
         question.description = data.get('description')
         question.image_url = data.get('image_url')

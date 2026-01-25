@@ -5,6 +5,7 @@ from sqlalchemy.orm import joinedload, aliased
 from sqlalchemy import or_, func, cast, Float
 from werkzeug.utils import secure_filename
 from extensions import cache, limiter
+from crypto_utils import encrypt_answer, decrypt_answer
 import datetime
 import os
 
@@ -272,7 +273,8 @@ def get_quiz_detail(quiz_id):
             'image_url': get_file_url(q.image_url),
             'option_a': q.option_a, 'option_b': q.option_b, 
             'option_c': q.option_c, 'option_d': q.option_d, 
-            'correct_option': q.correct_option
+            # 🔓 DECRYPT: Admin/Quiz Master can see correct answers (decrypted server-side)
+            'correct_option': decrypt_answer(q.correct_option)
         } for q in quiz.questions]
         return jsonify({'id': quiz.id, 'title': quiz.title, 'description': quiz.description, 'questions': questions})
     return _get_quiz_detail(quiz_id)
@@ -314,11 +316,20 @@ def add_question(quiz_id):
             image_filename = secure_filename(file.filename)
             file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], image_filename))
     
+    # 🔐 ENCRYPT: Encrypt correct answer before storing in database
+    # AES-256-CBC encryption ensures answer is secure at rest
+    plain_answer = data.get('correct_option', '')
+    encrypted_answer = encrypt_answer(plain_answer)
+    data['correct_option'] = encrypted_answer
+    
     new_question = Question(quiz_id=quiz_id, image_url=image_filename, **data)
     db.session.add(new_question)
     db.session.commit()
     
-    return jsonify({'id': new_question.id, 'image_url': get_file_url(new_question.image_url), **data}), 201
+    # Return decrypted answer in response for admin UI
+    return jsonify({'id': new_question.id, 'image_url': get_file_url(new_question.image_url), 
+                    **{k: v for k, v in data.items() if k != 'correct_option'},
+                    'correct_option': plain_answer}), 201
 
 @admin_bp.route('/questions/<int:question_id>', methods=['PUT', 'DELETE'])
 @admin_required
@@ -334,6 +345,11 @@ def handle_question(question_id):
                 image_filename = secure_filename(file.filename)
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], image_filename))
                 question.image_url = image_filename
+        
+        # 🔐 ENCRYPT: If correct_option is being updated, encrypt it
+        if 'correct_option' in data:
+            data['correct_option'] = encrypt_answer(data['correct_option'])
+        
         for key, value in data.items():
             setattr(question, key, value)
         db.session.commit()

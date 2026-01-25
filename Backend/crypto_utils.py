@@ -1,15 +1,18 @@
 """
 RSA Digital Signature Implementation for Quiz Results
+AES-256 Encryption for Correct Answers
 Ensures integrity and authenticity of quiz scores
 
 Security Features:
 - 2048-bit RSA key pair (private key kept on server, public key for verification)
 - SHA-256 hashing for message digest before signing
 - Digital signature prevents tampering with: user_id, quiz_id, score, timestamp
+- AES-256-CBC encryption for correct answers (at-rest encryption)
 """
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import hashlib
 import base64
@@ -19,6 +22,145 @@ import os
 KEY_DIR = os.path.join(os.path.dirname(__file__), 'keys')
 PRIVATE_KEY_PATH = os.path.join(KEY_DIR, 'private_key.pem')
 PUBLIC_KEY_PATH = os.path.join(KEY_DIR, 'public_key.pem')
+
+# ============================================================================
+# AES-256 ENCRYPTION FOR CORRECT ANSWERS
+# ============================================================================
+# Key stored in environment variable for security
+# In production: use AWS KMS, HashiCorp Vault, or similar key management service
+
+def get_aes_key():
+    """
+    Get AES-256 encryption key from environment variable
+    Key must be exactly 32 bytes (256 bits) for AES-256
+    
+    Security: Key is stored as environment variable, never in code or database
+    """
+    key = os.environ.get('QUIZ_AES_KEY')
+    if not key:
+        # For development: generate and store a key if not exists
+        key_file = os.path.join(KEY_DIR, 'aes_key.bin')
+        if os.path.exists(key_file):
+            with open(key_file, 'rb') as f:
+                return f.read()
+        else:
+            # Generate new key for development
+            os.makedirs(KEY_DIR, exist_ok=True)
+            new_key = os.urandom(32)  # 256 bits
+            with open(key_file, 'wb') as f:
+                f.write(new_key)
+            print(f"⚠️  Development AES key generated: {key_file}")
+            print("   For production, set QUIZ_AES_KEY environment variable")
+            return new_key
+    
+    # Decode from base64 if provided as env variable
+    return base64.b64decode(key)
+
+def encrypt_answer(plaintext):
+    """
+    Encrypt correct answer using AES-256-CBC
+    
+    Args:
+        plaintext: The correct answer (e.g., 'A', 'B', 'C', 'D')
+    
+    Returns:
+        Base64-encoded string containing: IV (16 bytes) + Ciphertext
+    
+    Security:
+        - AES-256-CBC mode with random IV per encryption
+        - Each encryption produces unique ciphertext (even for same answer)
+        - IV is prepended to ciphertext and stored together
+    """
+    if not plaintext:
+        return None
+    
+    key = get_aes_key()
+    
+    # Generate random 16-byte IV (Initialization Vector) for each encryption
+    # IV ensures same plaintext produces different ciphertext each time
+    iv = os.urandom(16)
+    
+    # Create AES-256-CBC cipher
+    cipher = Cipher(
+        algorithms.AES(key),
+        modes.CBC(iv),
+        backend=default_backend()
+    )
+    encryptor = cipher.encryptor()
+    
+    # PKCS7 padding: AES requires data to be multiple of 16 bytes
+    # For single character answers (A, B, C, D), we pad to 16 bytes
+    plaintext_bytes = plaintext.encode('utf-8')
+    padding_length = 16 - (len(plaintext_bytes) % 16)
+    padded_data = plaintext_bytes + bytes([padding_length] * padding_length)
+    
+    # Encrypt
+    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    
+    # Combine IV + Ciphertext and encode as Base64 for storage
+    encrypted_data = iv + ciphertext
+    return base64.b64encode(encrypted_data).decode('utf-8')
+
+def decrypt_answer(encrypted_base64):
+    """
+    Decrypt correct answer using AES-256-CBC
+    
+    Args:
+        encrypted_base64: Base64-encoded string containing IV + Ciphertext
+    
+    Returns:
+        Decrypted plaintext answer (e.g., 'A', 'B', 'C', 'D')
+    
+    Security:
+        - Only server can decrypt (key is server-side only)
+        - Client never sees decrypted answer or key
+    """
+    if not encrypted_base64:
+        return None
+    
+    key = get_aes_key()
+    
+    # Decode from Base64
+    encrypted_data = base64.b64decode(encrypted_base64)
+    
+    # Extract IV (first 16 bytes) and Ciphertext (rest)
+    iv = encrypted_data[:16]
+    ciphertext = encrypted_data[16:]
+    
+    # Create AES-256-CBC cipher for decryption
+    cipher = Cipher(
+        algorithms.AES(key),
+        modes.CBC(iv),
+        backend=default_backend()
+    )
+    decryptor = cipher.decryptor()
+    
+    # Decrypt
+    padded_data = decryptor.update(ciphertext) + decryptor.finalize()
+    
+    # Remove PKCS7 padding
+    padding_length = padded_data[-1]
+    plaintext_bytes = padded_data[:-padding_length]
+    
+    return plaintext_bytes.decode('utf-8')
+
+def generate_aes_key_for_env():
+    """
+    Generate a new AES-256 key and print it as Base64 for environment variable
+    Run this once to generate key: python -c "from crypto_utils import generate_aes_key_for_env; generate_aes_key_for_env()"
+    """
+    key = os.urandom(32)
+    key_b64 = base64.b64encode(key).decode('utf-8')
+    print(f"\n🔑 Generated AES-256 Key (Base64):")
+    print(f"   {key_b64}")
+    print(f"\n   Set as environment variable:")
+    print(f"   export QUIZ_AES_KEY='{key_b64}'  # Linux/Mac")
+    print(f"   $env:QUIZ_AES_KEY='{key_b64}'   # PowerShell")
+    return key_b64
+
+# ============================================================================
+# RSA DIGITAL SIGNATURES (existing code)
+# ============================================================================
 
 def generate_rsa_keys():
     """
@@ -295,12 +437,16 @@ def generate_quiz_integrity_hex(quiz_id, questions_data):
     return hex_string
 
 def verify_quiz_integrity_hex(quiz_id, questions_data, expected_hex):
+    """
+    Verify quiz integrity by comparing current hash with expected hash
+    Case-insensitive comparison (hex can be uppercase or lowercase)
+    """
     try:
         # Generate current hash
         current_hex = generate_quiz_integrity_hex(quiz_id, questions_data)
         
-        # Compare with expected hash
-        return current_hex == expected_hex
+        # Compare with expected hash (case-insensitive)
+        return current_hex.lower() == expected_hex.lower()
     except Exception as e:
         print(f"Error verifying quiz integrity: {e}")
         return False

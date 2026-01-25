@@ -1,7 +1,7 @@
 # 🔐 Security Implementation Guide
 ## Comprehensive Security & Access Control Documentation
 
-This document explains all security features implemented in the Quiz Master Application, including password hashing, RSA digital signatures, encoding techniques, and **Role-Based Access Control (RBAC)**.
+This document explains all security features implemented in the Quiz Master Application, including password hashing, RSA digital signatures, encoding techniques, **AES-256 encryption for correct answers**, and **Role-Based Access Control (RBAC)**.
 
 ---
 
@@ -9,9 +9,10 @@ This document explains all security features implemented in the Quiz Master Appl
 1. [Password Hashing with Salt](#1-password-hashing-with-salt)
 2. [RSA Digital Signatures](#2-rsa-digital-signatures)
 3. [Encoding Techniques](#3-encoding-techniques)
-4. [Access Control Matrix (ACM)](#4-access-control-matrix-acm)
-5. [Setup Instructions](#setup-instructions)
-6. [Security Summary](#security-summary)
+4. [AES-256 Encryption for Correct Answers](#4-aes-256-encryption-for-correct-answers)
+5. [Access Control Matrix (ACM)](#5-access-control-matrix-acm)
+6. [Setup Instructions](#setup-instructions)
+7. [Security Summary](#security-summary)
 
 ---
 
@@ -803,7 +804,251 @@ python test_encoding.py
 
 ---
 
-## 4. Access Control Matrix (ACM)
+## 4. AES-256 Encryption for Correct Answers
+
+### Overview
+**Correct answers are encrypted at rest** using **AES-256-CBC** (Advanced Encryption Standard) so that even if the database is compromised, the answers cannot be retrieved without the server-held encryption key. This preserves **exam integrity** and **confidentiality**.
+
+### Why AES-256?
+- **Symmetric encryption**: Same key for encryption and decryption (fast, efficient)
+- **256-bit key**: Computationally infeasible to brute-force
+- **Industry standard**: Approved by NIST, used by governments and enterprises
+- **Perfect for at-rest encryption**: Protects data stored in database
+
+### Implementation Details
+
+#### Algorithm: AES-256-CBC
+- **AES** (Advanced Encryption Standard)
+- **256-bit key** (32 bytes) - stored as environment variable
+- **CBC mode** (Cipher Block Chaining) with random IV per encryption
+- **PKCS7 padding** for data alignment
+- Uses **Python cryptography library**
+
+### Data Flow
+
+#### A. Quiz Creation (Admin / Quiz Master)
+```
+1. Admin/Quiz Master creates question
+2. Enters correct answer (e.g., "A")
+3. Server encrypts: encrypt_answer("A") 
+4. Stores encrypted ciphertext in database
+5. Client UI shows decrypted answer (for editing)
+```
+
+#### B. Quiz Attempt (User)
+```
+1. User requests quiz questions
+2. Server sends: question text, options A/B/C/D
+3. ❌ Server does NOT send correct_option (encrypted or decrypted)
+4. User submits answers: {"1": "A", "2": "C", ...}
+5. Server decrypts correct answers and compares
+6. Returns score (not the answers)
+```
+
+### Security Guarantees
+
+✅ **At no point:**
+- Client sees the correct answer (encrypted or decrypted)
+- Client sees the encryption key
+- Database stores plaintext answers
+
+### Code Implementation
+
+#### Encryption Function ([crypto_utils.py](crypto_utils.py))
+```python
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+import os
+import base64
+
+def encrypt_answer(plaintext):
+    """
+    Encrypt correct answer using AES-256-CBC
+    
+    Args:
+        plaintext: The correct answer (e.g., 'A', 'B', 'C', 'D')
+    
+    Returns:
+        Base64-encoded string: IV (16 bytes) + Ciphertext
+    """
+    key = get_aes_key()  # 32 bytes from env variable
+    
+    # Random IV ensures same answer encrypts differently each time
+    iv = os.urandom(16)
+    
+    # Create AES-256-CBC cipher
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    encryptor = cipher.encryptor()
+    
+    # PKCS7 padding (AES requires 16-byte blocks)
+    plaintext_bytes = plaintext.encode('utf-8')
+    padding_length = 16 - (len(plaintext_bytes) % 16)
+    padded_data = plaintext_bytes + bytes([padding_length] * padding_length)
+    
+    # Encrypt and combine IV + ciphertext
+    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    encrypted_data = iv + ciphertext
+    
+    return base64.b64encode(encrypted_data).decode('utf-8')
+```
+
+#### Decryption Function ([crypto_utils.py](crypto_utils.py))
+```python
+def decrypt_answer(encrypted_base64):
+    """
+    Decrypt correct answer using AES-256-CBC
+    Server-side only - client never calls this
+    
+    Args:
+        encrypted_base64: Base64(IV + Ciphertext)
+    
+    Returns:
+        Decrypted plaintext answer (e.g., 'A')
+    """
+    key = get_aes_key()
+    
+    # Decode from Base64
+    encrypted_data = base64.b64decode(encrypted_base64)
+    
+    # Extract IV (first 16 bytes) and ciphertext
+    iv = encrypted_data[:16]
+    ciphertext = encrypted_data[16:]
+    
+    # Decrypt
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    decryptor = cipher.decryptor()
+    padded_data = decryptor.update(ciphertext) + decryptor.finalize()
+    
+    # Remove PKCS7 padding
+    padding_length = padded_data[-1]
+    plaintext_bytes = padded_data[:-padding_length]
+    
+    return plaintext_bytes.decode('utf-8')
+```
+
+### Key Management
+
+#### Key Storage
+```bash
+# Production: Environment variable
+export QUIZ_AES_KEY='base64_encoded_32_byte_key'
+
+# Development: Auto-generated in keys/aes_key.bin
+# ⚠️ For development only - use env variable in production
+```
+
+#### Generate New Key
+```bash
+python -c "from crypto_utils import generate_aes_key_for_env; generate_aes_key_for_env()"
+
+# Output:
+# 🔑 Generated AES-256 Key (Base64):
+#    dGhpcyBpcyBhIDMyIGJ5dGUga2V5IGZvciBBRVM=
+#
+#    Set as environment variable:
+#    export QUIZ_AES_KEY='dGhpcyBpcyBhIDMyIGJ5dGUga2V5IGZvciBBRVM='  # Linux/Mac
+#    $env:QUIZ_AES_KEY='dGhpcyBpcyBhIDMyIGJ5dGUga2V5IGZvciBBRVM='   # PowerShell
+```
+
+### Database Schema
+
+#### Question Model ([models/models.py](models/models.py))
+```python
+class Question(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    question_text = db.Column(db.Text, nullable=False)
+    option_a = db.Column(db.String(255), nullable=False)
+    option_b = db.Column(db.String(255), nullable=False)
+    option_c = db.Column(db.String(255), nullable=False)
+    option_d = db.Column(db.String(255), nullable=False)
+    # AES-256-CBC encrypted correct answer
+    # Stores: Base64(IV + AES_encrypted(answer)) ≈ 44 characters
+    correct_option = db.Column(db.String(100), nullable=False)
+```
+
+### API Endpoints
+
+#### Create Question (Admin) - Encrypts answer
+```http
+POST /api/admin/quizzes/1/questions
+Content-Type: multipart/form-data
+
+question_text=What is 2+2?
+option_a=3
+option_b=4
+option_c=5
+option_d=6
+correct_option=B   ← Plaintext from admin
+
+Server encrypts → Stores: "Yjk0ZjNhMjE1NmU4..." (Base64 ciphertext)
+```
+
+#### Get Questions (User) - No answer sent
+```http
+GET /api/user/quiz/1/questions
+
+Response:
+{
+  "questions": [
+    {
+      "id": 1,
+      "question_text": "What is 2+2?",
+      "option_a": "3",
+      "option_b": "4",
+      "option_c": "5",
+      "option_d": "6"
+      // ❌ NO correct_option field - answer is server-side only
+    }
+  ]
+}
+```
+
+#### Submit Quiz (User) - Server decrypts and compares
+```http
+POST /api/user/quiz/1/submit
+{
+  "answers": {"1": "B", "2": "A", "3": "C"}
+}
+
+Server:
+1. For each question:
+   - Decrypt stored answer: decrypt_answer(encrypted) → "B"
+   - Compare with user answer: "B" == "B" ✓
+2. Calculate score
+3. Return score (not answers)
+
+Response:
+{
+  "total_score": 2,
+  "max_score": 3
+}
+```
+
+### Security Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Database Breach Protection** | Even if database is leaked, encrypted answers are useless without key |
+| **Exam Integrity** | Users cannot extract answers by inspecting API responses |
+| **Confidentiality** | Answers are encrypted at rest, decrypted only during scoring |
+| **Defense in Depth** | Complements access control with cryptographic protection |
+| **Unique Ciphertext** | Same answer encrypts differently each time (random IV) |
+
+### Example: Same Answer, Different Ciphertext
+
+```python
+# Due to random IV, encrypting "A" multiple times gives different results:
+encrypt_answer("A")  # "Yjk0ZjNhMjE1NmU4YzE0NTZiMjNkOWUxMjM0NTY3ODk="
+encrypt_answer("A")  # "ZmE5YjdjOGUyM2E0NTY3ODlhYmNkZWYwMTIzNDU2Nzg="
+encrypt_answer("A")  # "MWIzZDVmN2E5YjBjMmQ0ZTZmOGExYjNjNWQ3ZTlmMGE="
+
+# All decrypt to "A" but look completely different in database
+# Prevents frequency analysis attacks
+```
+
+---
+
+## 5. Access Control Matrix (ACM)
 
 ### Overview
 The application implements **Role-Based Access Control (RBAC)** with three distinct roles providing comprehensive access control across all system resources.
@@ -876,7 +1121,16 @@ Quiz.query.filter_by(id=quiz_id, created_by_quiz_master_id=qm_id).first_or_404()
    - Benefits: Human-readable, tamper detection
    - Stored in: `Quiz.integrity_hash` field
 
-5. **Access Control Matrix (ACM)** ✅
+5. **AES-256 Encryption for Correct Answers** ✅
+   - Algorithm: AES-256-CBC with random IV per encryption
+   - Purpose: Encrypt correct answers at rest in database
+   - Key: 32-byte key stored in environment variable (never in code/database)
+   - Flow: Admin creates question → Server encrypts answer → Store ciphertext
+   - Flow: User submits quiz → Server decrypts → Compare → Return score (not answers)
+   - **At no point**: Client sees correct answer or encryption key
+   - Stored in: `Question.correct_option` field as Base64(IV + ciphertext)
+
+6. **Access Control Matrix (ACM)** ✅
    - **3 Subjects**: User, Quiz Master, Admin
    - **7+ Objects**: Subjects, Chapters, Quizzes, Questions, Users, Scores, Analytics
    - **Policy Definitions**: Clear justifications for each access right
@@ -887,10 +1141,12 @@ Quiz.query.filter_by(id=quiz_id, created_by_quiz_master_id=qm_id).first_or_404()
 
 - **Salting**: Each password gets unique random salt
 - **Hashing**: One-way function, cannot reverse to get password
-- **Asymmetric Cryptography**: Public/private key pairs
+- **Asymmetric Cryptography**: Public/private key pairs (RSA)
+- **Symmetric Cryptography**: Single key for encrypt/decrypt (AES)
 - **Digital Signatures**: Proves data origin and integrity
 - **Message Digest**: SHA-256 hashing before signing
 - **Tamper Detection**: Any change invalidates signature
+- **At-Rest Encryption**: Data encrypted when stored in database
 - **Base64 Encoding**: Compact binary-to-text encoding
 - **Hexadecimal Encoding**: Human-readable binary representation
 - **Role-Based Access Control (RBAC)**: Three-tier permission system
@@ -900,5 +1156,5 @@ Quiz.query.filter_by(id=quiz_id, created_by_quiz_master_id=qm_id).first_or_404()
 
 ---
 
-**Implementation Date**: January 15, 2026  
+**Implementation Date**: January 25, 2026  
 **Status**: Fully Implemented and Tested ✅

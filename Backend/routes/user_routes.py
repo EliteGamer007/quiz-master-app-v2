@@ -12,7 +12,8 @@ import random
 from crypto_utils import (
     sign_quiz_result, verify_quiz_result,
     encode_quiz_result_base64, decode_quiz_result_base64,  # Base64 encoding
-    generate_quiz_integrity_hex, verify_quiz_integrity_hex  # Hexadecimal encoding
+    generate_quiz_integrity_hex, verify_quiz_integrity_hex,  # Hexadecimal encoding
+    decrypt_answer  # AES decryption for answer verification
 )
 user_bp = Blueprint('user', __name__)
 
@@ -243,8 +244,9 @@ def get_quiz_questions(quiz_id):
             'option_a': q.option_a,
             'option_b': q.option_b,
             'option_c': q.option_c,
-            'option_d': q.option_d,
-            'correct_option': q.correct_option
+            'option_d': q.option_d
+            # 🔒 SECURITY: correct_option is NOT sent to client
+            # Answer verification happens server-side only during submission
         })
     return jsonify({
         'quiz_id': quiz.id,
@@ -265,7 +267,10 @@ def submit_quiz(quiz_id):
     total_questions = len(quiz.questions)
     for question in quiz.questions:
         user_answer = answers.get(str(question.id))
-        if user_answer and user_answer.upper() == question.correct_option.upper():
+        # 🔓 DECRYPT: Server decrypts correct answer for comparison
+        # Client never sees decrypted answer or encryption key
+        decrypted_correct = decrypt_answer(question.correct_option)
+        if user_answer and decrypted_correct and user_answer.upper() == decrypted_correct.upper():
             score += 1
     user = get_jwt_identity()
     user_id = user.get('id')
