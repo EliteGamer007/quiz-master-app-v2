@@ -1,15 +1,3 @@
-"""
-RSA Digital Signature Implementation for Quiz Results
-AES-256 Encryption for Correct Answers
-Ensures integrity and authenticity of quiz scores
-
-Security Features:
-- 2048-bit RSA key pair (private key kept on server, public key for verification)
-- SHA-256 hashing for message digest before signing
-- Digital signature prevents tampering with: user_id, quiz_id, score, timestamp
-- AES-256-CBC encryption for correct answers (at-rest encryption)
-"""
-
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -23,11 +11,6 @@ KEY_DIR = os.path.join(os.path.dirname(__file__), 'keys')
 PRIVATE_KEY_PATH = os.path.join(KEY_DIR, 'private_key.pem')
 PUBLIC_KEY_PATH = os.path.join(KEY_DIR, 'public_key.pem')
 
-# ============================================================================
-# AES-256 ENCRYPTION FOR CORRECT ANSWERS
-# ============================================================================
-# Key stored in environment variable for security
-# In production: use AWS KMS, HashiCorp Vault, or similar key management service
 
 def get_aes_key():
     """
@@ -158,9 +141,6 @@ def generate_aes_key_for_env():
     print(f"   $env:QUIZ_AES_KEY='{key_b64}'   # PowerShell")
     return key_b64
 
-# ============================================================================
-# RSA DIGITAL SIGNATURES (existing code)
-# ============================================================================
 
 def generate_rsa_keys():
     """

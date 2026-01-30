@@ -379,35 +379,67 @@ The application follows NIST E-Authentication Architecture:
 
 ---
 
-## 🔧 QUICK COMMANDS FOR DEMO
+## 🔧 QUICK DEMO COMMANDS FOR EVALUATOR
 
+### ⚡ FASTEST - Single Command Demo (Recommended!)
 ```bash
-# Backend
 cd Backend
-python init_keys.py      # Generate RSA keys (if not exists)
-python app.py            # Start Flask server
+python quick_demo.py
+```
+**Output**: Shows all 8 security features in action with visual examples
 
-# Frontend
-cd Frontend
-npm install
-npm run serve
+---
 
-# Run Comprehensive Security Tests (85 tests)
+### 1️⃣ Run All Security Tests (85 tests - Comprehensive Validation)
+```bash
 cd Backend
 python test_security_comprehensive.py
-
-# Test encryption
-python -c "from crypto_utils import encrypt_answer, decrypt_answer; e=encrypt_answer('A'); print(f'Encrypted: {e}'); print(f'Decrypted: {decrypt_answer(e)}')"
-
-# Test signature
-python -c "from crypto_utils import sign_quiz_result, verify_quiz_result; sig=sign_quiz_result(1,1,10,'2026-01-25'); print(f'Valid: {verify_quiz_result(1,1,10,\"2026-01-25\",sig)}')"
-
-# Test tamper detection
-python -c "from crypto_utils import sign_quiz_result, verify_quiz_result; sig=sign_quiz_result(1,1,10,'2026-01-25'); print(f'Tampered: {verify_quiz_result(1,1,15,\"2026-01-25\",sig)}')"
 ```
 
 ---
 
-**Prepared for Viva** ✅  
-**All Security Components Implemented** ✅  
-**Documentation Complete** ✅
+### 2️⃣ Individual Component Tests
+
+**Password Hashing (scrypt + salt):**
+```bash
+python -c "from werkzeug.security import generate_password_hash, check_password_hash; h=generate_password_hash('test123'); print('Hash:', h[:60]+'...'); print('Verify:', check_password_hash(h, 'test123'))"
+```
+
+**AES-256 Encryption (correct answers):**
+```bash
+python -c "from crypto_utils import encrypt_answer, decrypt_answer; e=encrypt_answer('A'); print('Encrypted:', e); print('Decrypted:', decrypt_answer(e))"
+```
+
+**RSA Digital Signature (tamper detection):**
+```bash
+python -c "from crypto_utils import sign_quiz_result, verify_quiz_result; sig=sign_quiz_result(1,1,10.0,'2026-01-25'); print('Original Valid:', verify_quiz_result(1,1,10.0,'2026-01-25',sig)); print('Tampered Fails:', verify_quiz_result(1,1,15.0,'2026-01-25',sig))"
+```
+
+**Base64 Encoding (verification tokens):**
+```bash
+python -c "from crypto_utils import encode_quiz_result_base64, decode_quiz_result_base64; token=encode_quiz_result_base64(123,45,8.5,'2026-01-25'); print('Token:', token); print('Decoded:', decode_quiz_result_base64(token))"
+```
+
+**Hexadecimal Encoding (integrity hashes):**
+```bash
+python -c "from crypto_utils import generate_quiz_integrity_hex, verify_quiz_integrity_hex; h=generate_quiz_integrity_hex(1,'Q1:Python?:A'); print('Hash:', h); print('Valid:', verify_quiz_integrity_hex(1,'Q1:Python?:A',h)); print('Tampered:', verify_quiz_integrity_hex(1,'Q1:Tampered?:B',h))"
+```
+
+**OTP Generation:**
+```bash
+python -c "from routes.auth_routes import generate_otp; print('OTP 1:', generate_otp()); print('OTP 2:', generate_otp()); print('OTP 3:', generate_otp())"
+```
+
+### 3️⃣ Start Application
+```bash
+# Backend (Terminal 1)
+cd Backend
+python app.py
+
+# Frontend (Terminal 2)
+cd Frontend
+npm run serve
+```
+
+---
+

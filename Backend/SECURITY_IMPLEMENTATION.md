@@ -19,15 +19,19 @@ This document explains all security features implemented in the Quiz Master Appl
 ## 1. Password Hashing with Salt
 
 ### Overview
-User passwords are **never stored in plain text**. Instead, they are hashed using **pbkdf2:sha256** algorithm with a **random salt** that is unique for each user.
+User passwords are **never stored in plain text**. Instead, they are hashed using the **scrypt** algorithm (Werkzeug 3.x default) with a **random salt** that is unique for each user. Scrypt is a memory-hard function providing superior protection against hardware-accelerated attacks.
 
 ### Implementation Details
 
-#### Algorithm: pbkdf2:sha256
-- **PBKDF2** (Password-Based Key Derivation Function 2)
-- **260,000 iterations** (computational cost to slow down brute-force attacks)
+#### Algorithm: scrypt (Werkzeug 3.x default)
+- **scrypt** (Memory-hard password hashing function)
+- **N=32768** (CPU/memory cost parameter)
+- **r=8** (block size parameter)
+- **p=1** (parallelization parameter)
 - **Random salt** generated automatically per user
 - Uses **Werkzeug's security functions**
+
+> **Note**: Werkzeug 3.x defaults to scrypt which provides better protection against GPU/ASIC attacks compared to the older pbkdf2:sha256 algorithm.
 
 #### How It Works
 
@@ -38,9 +42,9 @@ from werkzeug.security import generate_password_hash
 # User provides password: "mypassword123"
 plain_password = "mypassword123"
 
-# Hash with auto-generated salt
+# Hash with auto-generated salt using scrypt (Werkzeug 3.x default)
 hashed = generate_password_hash(plain_password)
-# Result: "pbkdf2:sha256:260000$randomsalt$hashedvalue"
+# Result: "scrypt:32768:8:1$randomsalt$hashedvalue"
 
 # Store in database (NOT the plain password)
 user.password = hashed
@@ -54,7 +58,7 @@ from werkzeug.security import check_password_hash
 input_password = "mypassword123"
 
 # Retrieve stored hash from database
-stored_hash = user.password  # "pbkdf2:sha256:260000$salt$hash"
+stored_hash = user.password  # "scrypt:32768:8:1$salt$hash"
 
 # Verify: extracts salt from stored hash and compares
 if check_password_hash(stored_hash, input_password):
@@ -67,18 +71,19 @@ else:
 
 ### Storage Format
 ```
-pbkdf2:sha256:260000$<random_salt>$<hashed_password>
-│     │        │              │             │
-│     │        │              │             └─ Hash output (64 chars)
-│     │        │              └─ Random salt (16 chars)
-│     │        └─ Iteration count (260,000)
-│     └─ Hash algorithm (SHA-256)
-└─ Key derivation function (PBKDF2)
+scrypt:32768:8:1$<random_salt>$<hashed_password>
+│      │    │ │        │              │
+│      │    │ │        │              └─ Hash output (Base64 encoded)
+│      │    │ │        └─ Random salt (Base64 encoded)
+│      │    │ └─ Parallelization factor (p=1)
+│      │    └─ Block size (r=8)
+│      └─ CPU/Memory cost (N=32768)
+└─ Algorithm identifier (scrypt)
 ```
 
 **Example:**
 ```
-pbkdf2:sha256:260000$abc123XYZ$1a2b3c4d5e6f7g8h9i0j...
+scrypt:32768:8:1$aB3xY9kMwZ$1a2b3c4d5e6f7g8h9i0j...
 ```
 
 ### Code Locations
@@ -93,20 +98,21 @@ class User(db.Model):
 
 #### 2. Registration ([routes/auth_routes.py](routes/auth_routes.py))
 ```python
-# Password hashing with salt: generate_password_hash uses pbkdf2:sha256 with 260,000 iterations
-# A random salt is generated and embedded in the hash (format: pbkdf2:sha256:260000$<salt>$<hash>)
-# This protects against rainbow table attacks and ensures unique hashes for identical passwords
+# Password hashing with scrypt: Werkzeug 3.x uses scrypt algorithm by default
+# scrypt is a memory-hard function providing better security against GPU/ASIC attacks
+# A random salt is generated and embedded in the hash (format: scrypt:32768:8:1$<salt>$<hash>)
 hashed_password = generate_password_hash(registration_data['password'])
 new_user = User(
     email=email,
-    password=hashed_password,  # Stored as: "pbkdf2:sha256:260000$randomsalt$hashedvalue"
+    password=hashed_password,  # Stored as: "scrypt:32768:8:1$randomsalt$hashedvalue"
 )
 ```
 
 #### 3. Login Verification ([routes/auth_routes.py](routes/auth_routes.py))
 ```python
 # Secure password verification: check_password_hash extracts the salt from the stored
-# hash (format: method$salt$hash) and uses it to hash the input password for comparison
+# scrypt hash (format: scrypt:32768:8:1$salt$hash) and uses it to hash the input
+# password for comparison using constant-time algorithm to prevent timing attacks
 if not check_password_hash(user.password, password):
     return jsonify({'error': 'Invalid credentials'}), 401
 ```
@@ -115,7 +121,7 @@ if not check_password_hash(user.password, password):
 
 ✅ **Salt Protection**: Each user has unique salt → same password = different hashes  
 ✅ **Rainbow Table Defense**: Pre-computed hash tables are useless  
-✅ **Brute Force Resistance**: 260,000 iterations slow down attacks  
+✅ **Memory-Hard Function**: scrypt requires significant memory, defeating GPU/ASIC attacks  
 ✅ **No Plain Text**: Passwords never stored in readable form  
 ✅ **Database Breach Protection**: Even if database leaked, passwords stay protected
 
@@ -124,10 +130,10 @@ if not check_password_hash(user.password, password):
 **Two users with same password:**
 ```
 User 1: password = "password123"
-  → Hash: pbkdf2:sha256:260000$aB3xY$1f2e3d4c5b...
+  → Hash: scrypt:32768:8:1$aB3xY$1f2e3d4c5b...
   
 User 2: password = "password123"  
-  → Hash: pbkdf2:sha256:260000$zK9mW$9a8b7c6d5e...
+  → Hash: scrypt:32768:8:1$zK9mW$9a8b7c6d5e...
   
 Different salts → Different hashes ✅
 ```

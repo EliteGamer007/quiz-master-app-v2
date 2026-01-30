@@ -15,6 +15,7 @@
         <button type="submit" :disabled="loading">{{ loading ? 'Please wait...' : 'Login' }}</button>
         <div class="link">
           <p>New user? <a href="#" @click.prevent="$router.push('/register')">Register Here</a></p>
+          <p><a href="#" @click.prevent="$router.push('/forgot-password')">Forgot Password?</a></p>
         </div>
       </form>
 

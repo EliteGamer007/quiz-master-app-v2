@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import LoginForm from '../components/LoginForm.vue';
 import RegisterForm from '../components/RegisterForm.vue';
+import ForgotPassword from '../components/ForgotPassword.vue';
 import AdminDashboard from '../components/AdminDashboard.vue';
 import UserDashboard from '../components/UserDashboard.vue';
 import SubjectDetail from '../components/SubjectDetail.vue';
@@ -16,6 +17,7 @@ import AnalyticsDashboard from '../components/AnalyticsDashboard.vue';
 const routes = [
   { path: '/', component: LoginForm, alias: '/login' },
   { path: '/register', component: RegisterForm },
+  { path: '/forgot-password', component: ForgotPassword },
   {
     path: '/admin_dashboard',
     name: 'AdminDashboard',
