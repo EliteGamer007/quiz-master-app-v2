@@ -22,13 +22,13 @@ const routes = [
     path: '/admin_dashboard',
     name: 'AdminDashboard',
     component: AdminDashboard,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, role: ['admin', 'quiz_master'] }
   },
   {
     path: '/admin/analytics',
     name: 'AnalyticsDashboard',
     component: AnalyticsDashboard,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, role: ['admin', 'quiz_master'] }
   },
   {
     path: '/dashboard',
@@ -91,6 +91,18 @@ const router = createRouter({
   routes
 });
 
+function parseJwtPayload(token) {
+  const parts = token.split('.');
+  if (parts.length < 2) {
+    throw new Error('Invalid JWT token format');
+  }
+
+  const base64Url = parts[1];
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const paddedBase64 = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+  return JSON.parse(atob(paddedBase64));
+}
+
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token');
   if (to.meta.requiresAuth) {
@@ -98,16 +110,18 @@ router.beforeEach((to, from, next) => {
       return next('/');
     }
     try {
-      const payloadBase64 = token.split('.')[1];
-      const decodedPayload = JSON.parse(atob(payloadBase64));
+      const decodedPayload = parseJwtPayload(token);
       const identity = decodedPayload.identity;
       const userRole = typeof identity === 'object' && identity.role ? identity.role : identity;
-      if (to.meta.role && userRole !== to.meta.role) {
-        return next('/');
+      const allowedRoles = to.meta.role;
+      if (allowedRoles) {
+        const rolesArray = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+        if (!rolesArray.includes(userRole)) {
+          return next('/');
+        }
       }
     } catch (e) {
       localStorage.removeItem('token');
-      sessionStorage.removeItem('refresh_token');
       return next('/');
     }
   }

@@ -78,17 +78,15 @@ export default {
   methods: {
     async logout() {
       const accessToken = localStorage.getItem('token');
-      const refreshToken = sessionStorage.getItem('refresh_token');
-      const logoutToken = refreshToken || accessToken;
       try {
-        if (logoutToken) {
+        if (accessToken) {
           await fetch('/api/auth/logout', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
-              'Authorization': `Bearer ${logoutToken}`,
+              'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ refresh_token: refreshToken })
+            }
           });
         }
       } catch (error) {
@@ -97,7 +95,6 @@ export default {
       localStorage.removeItem('token');
       localStorage.removeItem('role');
       localStorage.removeItem('user_name');
-      sessionStorage.removeItem('refresh_token');
       this.$router.push('/');
     },
     async apiCall(endpoint, method = 'GET', body = null) {

@@ -9,19 +9,14 @@ function clearAuthStorage() {
 	localStorage.removeItem('token')
 	localStorage.removeItem('role')
 	localStorage.removeItem('user_name')
-	sessionStorage.removeItem('refresh_token')
 }
 
 async function refreshAccessToken() {
-	const refreshToken = sessionStorage.getItem('refresh_token')
-	if (!refreshToken) {
-		return null
-	}
-
+	// Refresh token is sent automatically via HttpOnly cookie
 	const response = await originalFetch('/api/auth/refresh', {
 		method: 'POST',
+		credentials: 'same-origin',
 		headers: {
-			'Authorization': `Bearer ${refreshToken}`,
 			'Content-Type': 'application/json'
 		}
 	})
@@ -34,9 +29,6 @@ async function refreshAccessToken() {
 	const data = await response.json()
 	if (data.access_token) {
 		localStorage.setItem('token', data.access_token)
-	}
-	if (data.refresh_token) {
-		sessionStorage.setItem('refresh_token', data.refresh_token)
 	}
 	return data.access_token || null
 }

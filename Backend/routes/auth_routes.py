@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 # Werkzeug 3.x password hashing uses scrypt algorithm by default (memory-hard function)
 # scrypt provides better protection against GPU/ASIC attacks than older pbkdf2
 # Hash format: scrypt:32768:8:1$<salt>$<hash> where 32768=CPU cost, 8=block size, 1=parallelization
@@ -6,11 +6,13 @@ from flask import Blueprint, request, jsonify
 # check_password_hash: Extracts salt from stored hash to verify passwords securely
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import (
-    create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
+    create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt,
+    set_refresh_cookies, unset_refresh_cookies
 )
 from models.models import db, User, Admin, QuizMaster, RevokedToken, UserTokenState
 from functools import wraps
 import datetime
+import calendar
 import random
 import string
 from flask_mail import Message
@@ -59,7 +61,7 @@ def _create_token_pair(identity, role, session_start=None):
     session_start = session_start or now
     additional_claims = {
         'role': role,
-        'session_start': int(session_start.timestamp())
+        'session_start': calendar.timegm(session_start.timetuple())
     }
 
     access_token = create_access_token(
@@ -187,16 +189,17 @@ def request_otp():
     # Admin login - no OTP required
     if email == ADMIN_CREDENTIALS['email'] and password == ADMIN_CREDENTIALS['password']:
         access_token, refresh_token = _create_token_pair(identity='admin', role='admin')
-        return jsonify({
+        resp = make_response(jsonify({
             'message': 'Admin login successful',
             'role': 'admin',
             'token': access_token,
             'access_token': access_token,
-            'refresh_token': refresh_token,
             'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
             'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60,
             'requires_otp': False
-        }), 200
+        }), 200)
+        set_refresh_cookies(resp, refresh_token)
+        return resp
 
     # Quiz Master login - no OTP required
     quiz_master = QuizMaster.query.filter_by(email=email).first()
@@ -208,17 +211,18 @@ def request_otp():
             'full_name': quiz_master.full_name
         }
         access_token, refresh_token = _create_token_pair(identity=identity, role='quiz_master')
-        return jsonify({
+        resp = make_response(jsonify({
             'message': 'Quiz Master login successful',
             'role': 'quiz_master',
             'token': access_token,
             'access_token': access_token,
-            'refresh_token': refresh_token,
             'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
             'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60,
             'full_name': quiz_master.full_name,
             'requires_otp': False
-        }), 200
+        }), 200)
+        set_refresh_cookies(resp, refresh_token)
+        return resp
 
     # User login - require OTP
     user = User.query.filter_by(email=email).first()
@@ -286,16 +290,17 @@ def verify_otp():
     }
     access_token, refresh_token = _create_token_pair(identity=identity, role='user')
     
-    return jsonify({
+    resp = make_response(jsonify({
         'message': 'Login successful',
         'role': 'user',
         'token': access_token,
         'access_token': access_token,
-        'refresh_token': refresh_token,
         'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
         'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60,
         'full_name': user.full_name
-    }), 200
+    }), 200)
+    set_refresh_cookies(resp, refresh_token)
+    return resp
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -462,13 +467,14 @@ def refresh_access_token():
     access_token, refresh_token = _create_token_pair(identity=identity, role=role, session_start=session_start)
     db.session.commit()
 
-    return jsonify({
+    resp = make_response(jsonify({
         'access_token': access_token,
         'token': access_token,
-        'refresh_token': refresh_token,
         'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
         'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60
-    }), 200
+    }), 200)
+    set_refresh_cookies(resp, refresh_token)
+    return resp
 
 
 @auth_bp.route('/logout', methods=['POST'])
@@ -478,20 +484,33 @@ def logout():
     jwt_payload = get_jwt()
     _revoke_jwt(jwt_payload)
 
-    data = request.get_json(silent=True) or {}
-    refresh_token = data.get('refresh_token')
-
-    if refresh_token:
+    # Try to revoke refresh token from cookie
+    refresh_cookie = request.cookies.get('refresh_token_cookie')
+    if refresh_cookie:
         try:
             from flask_jwt_extended import decode_token
-            refresh_payload = decode_token(refresh_token)
+            refresh_payload = decode_token(refresh_cookie)
+            if refresh_payload.get('type') == 'refresh':
+                _revoke_jwt(refresh_payload)
+        except Exception:
+            pass
+
+    # Also check JSON body for backward compat
+    data = request.get_json(silent=True) or {}
+    refresh_token_body = data.get('refresh_token')
+    if refresh_token_body:
+        try:
+            from flask_jwt_extended import decode_token
+            refresh_payload = decode_token(refresh_token_body)
             if refresh_payload.get('type') == 'refresh':
                 _revoke_jwt(refresh_payload)
         except Exception:
             pass
 
     db.session.commit()
-    return jsonify({'message': 'Logged out successfully'}), 200
+    resp = make_response(jsonify({'message': 'Logged out successfully'}), 200)
+    unset_refresh_cookies(resp)
+    return resp
 
 # ============================================================================
 # FORGOT PASSWORD ROUTES

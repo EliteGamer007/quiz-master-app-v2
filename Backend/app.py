@@ -4,6 +4,7 @@ from flask_jwt_extended import JWTManager
 from sqlalchemy.pool import NullPool
 from extensions import db, mail, cache, limiter
 import os
+import socket
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 
@@ -13,6 +14,14 @@ load_dotenv()
 
 def is_true(value):
     return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def can_connect(host, port, timeout=0.2):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 def create_app():
     app = Flask(__name__)
@@ -38,10 +47,15 @@ def create_app():
     app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
     app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_USERNAME'))
     
-    app.config['CACHE_TYPE'] = 'RedisCache'
-    app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/1'
-    
-    app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/2'
+    redis_available = can_connect('localhost', 6379)
+
+    if redis_available:
+        app.config['CACHE_TYPE'] = 'RedisCache'
+        app.config['CACHE_REDIS_URL'] = os.getenv('CACHE_REDIS_URL', 'redis://localhost:6379/1')
+        app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/2'
+    else:
+        app.config['CACHE_TYPE'] = 'SimpleCache'
+        app.config['RATELIMIT_STORAGE_URL'] = 'memory://'
     
     cors_origins_raw = os.getenv('CORS_ORIGINS', 'http://localhost:3000,https://localhost:3000')
     cors_origins = [origin.strip() for origin in cors_origins_raw.split(',') if origin.strip()]
@@ -53,6 +67,14 @@ def create_app():
     limiter.init_app(app)
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 900   # 15 minutes
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = 7200  # 120 minutes
+
+    # --- HttpOnly cookie storage for refresh tokens ---
+    app.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
+    app.config['JWT_COOKIE_SECURE'] = is_true(os.getenv('FLASK_SSL_ENABLED', 'false'))
+    app.config['JWT_COOKIE_SAMESITE'] = 'Lax'
+    app.config['JWT_COOKIE_CSRF_PROTECT'] = False
+    app.config['JWT_REFRESH_COOKIE_PATH'] = '/api/auth/'
+
     jwt = JWTManager(app)
 
     @jwt.token_in_blocklist_loader
