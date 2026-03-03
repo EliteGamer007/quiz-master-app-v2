@@ -91,8 +91,11 @@ export default {
 
         // Check if admin or quiz_master (no OTP required)
         if (result.requires_otp === false) {
-          const { token, role, full_name } = result;
+          const { token, refresh_token, role, full_name } = result;
           localStorage.setItem('token', token);
+          if (refresh_token) {
+            sessionStorage.setItem('refresh_token', refresh_token);
+          }
           localStorage.setItem('role', role);
           if (full_name) {
             localStorage.setItem('user_name', full_name);
@@ -135,7 +138,7 @@ export default {
           return;
         }
 
-        const { token, role, full_name } = result;
+        const { token, refresh_token, role, full_name } = result;
 
         if (!token) {
           alert('Received invalid token.');
@@ -144,6 +147,9 @@ export default {
         }
 
         localStorage.setItem('token', token);
+        if (refresh_token) {
+          sessionStorage.setItem('refresh_token', refresh_token);
+        }
         localStorage.setItem('role', role);
         if (full_name) {
           localStorage.setItem('user_name', full_name);

@@ -107,6 +107,7 @@ router.beforeEach((to, from, next) => {
       }
     } catch (e) {
       localStorage.removeItem('token');
+      sessionStorage.removeItem('refresh_token');
       return next('/');
     }
   }

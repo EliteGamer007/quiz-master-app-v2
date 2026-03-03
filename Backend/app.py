@@ -5,16 +5,24 @@ from sqlalchemy.pool import NullPool
 from extensions import db, mail, cache, limiter
 import os
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 # Load environment variables
 load_dotenv()
+
+
+def is_true(value):
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'super-secret-key-ig')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'super-secret-key-jwt')
+    jwt_secret = os.getenv('JWT_SECRET_KEY')
+    if not jwt_secret:
+        raise RuntimeError('JWT_SECRET_KEY is required. Set it in environment/.env before starting the app.')
+    app.config['JWT_SECRET_KEY'] = jwt_secret
     app.config['JWT_IDENTITY_CLAIM'] = 'identity'
     
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
@@ -35,13 +43,43 @@ def create_app():
     
     app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/2'
     
-    CORS(app, supports_credentials=True, origins="http://localhost:8080")
+    cors_origins_raw = os.getenv('CORS_ORIGINS', 'http://localhost:3000,https://localhost:3000')
+    cors_origins = [origin.strip() for origin in cors_origins_raw.split(',') if origin.strip()]
+    CORS(app, supports_credentials=True, origins=cors_origins)
 
     db.init_app(app)
     mail.init_app(app)
     cache.init_app(app)
     limiter.init_app(app)
-    JWTManager(app)
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 900   # 15 minutes
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = 7200  # 120 minutes
+    jwt = JWTManager(app)
+
+    @jwt.token_in_blocklist_loader
+    def is_token_revoked(jwt_header, jwt_payload):
+        from models.models import RevokedToken, UserTokenState
+
+        jti = jwt_payload.get('jti')
+        if not jti:
+            return True
+
+        if RevokedToken.query.filter_by(jti=jti).first() is not None:
+            return True
+
+        identity = jwt_payload.get('identity')
+        if isinstance(identity, dict):
+            role = identity.get('role')
+            user_id = identity.get('id')
+            if role in ('user', 'quiz_master') and user_id is not None:
+                state = UserTokenState.query.filter_by(user_id=user_id, role=role).first()
+                if state:
+                    iat = jwt_payload.get('iat')
+                    if iat is not None:
+                        issued_at = datetime.fromtimestamp(iat, tz=timezone.utc).replace(tzinfo=None)
+                        if issued_at < state.valid_after:
+                            return True
+
+        return False
 
     from routes.auth_routes import auth_bp
     from routes.admin_routes import admin_bp
@@ -60,5 +98,19 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
+    debug_mode = is_true(os.getenv('FLASK_DEBUG', 'true'))
+    port = int(os.getenv('BACKEND_PORT', '5000'))
 
-    app.run(debug=True, port=8000)
+    ssl_enabled = is_true(os.getenv('FLASK_SSL_ENABLED', 'false'))
+    cert_file = os.getenv('FLASK_SSL_CERT_FILE', 'cert.pem')
+    key_file = os.getenv('FLASK_SSL_KEY_FILE', 'key.pem')
+
+    if ssl_enabled:
+        if not os.path.exists(cert_file) or not os.path.exists(key_file):
+            raise RuntimeError(
+                f"SSL is enabled but certificate files were not found. "
+                f"Expected cert={cert_file}, key={key_file}."
+            )
+        app.run(debug=debug_mode, port=port, ssl_context=(cert_file, key_file))
+    else:
+        app.run(debug=debug_mode, port=port)

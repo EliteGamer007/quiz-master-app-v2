@@ -123,10 +123,59 @@ Before deploying to production:
 - [ ] Configure rate limiting
 - [ ] Set up backup system
 
+## Localhost HTTPS (Self-Signed, Evaluation Demo)
+
+Use this for viva/demo to show HTTPS on localhost.
+
+### 1) Generate certificate (Backend folder)
+
+```powershell
+cd Backend
+openssl req -x509 -newkey rsa:4096 -sha256 -nodes -days 365 `
+	-keyout key.pem `
+	-out cert.pem `
+	-subj "/CN=localhost" `
+	-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+### 2) Enable HTTPS in `Backend/.env`
+
+```env
+FLASK_SSL_ENABLED=true
+FLASK_SSL_CERT_FILE=cert.pem
+FLASK_SSL_KEY_FILE=key.pem
+BACKEND_PORT=5000
+CORS_ORIGINS=http://localhost:3000,https://localhost:3000
+```
+
+### 3) Point frontend proxy to HTTPS backend (`Frontend/.env`)
+
+```env
+VUE_APP_BACKEND_PORT=5000
+VUE_APP_BACKEND_HTTPS=true
+```
+
+### 4) Start backend and frontend
+
+```powershell
+# Terminal 1
+cd Backend
+python app.py
+
+# Terminal 2
+cd Frontend
+npm run serve
+```
+
+Backend will run on `https://localhost:5000`.
+Frontend remains on `http://localhost:3000` (dev), proxied to HTTPS backend.
+
+> Browser warning for self-signed cert is expected in local demo. This is valid for evaluation, but production must use CA-issued certificates.
+
 ## Application URLs
 
-- Frontend: http://localhost:8080
-- Backend API: http://localhost:8000
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:5000 (or https://localhost:5000 when SSL enabled)
 - API Documentation: Check routes/ folder
 
 ## Support

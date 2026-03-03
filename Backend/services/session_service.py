@@ -14,7 +14,7 @@ Flow:
 """
 
 import datetime
-from flask_jwt_extended import create_access_token, get_jwt_identity
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity
 
 
 class SessionService:
@@ -27,16 +27,30 @@ class SessionService:
     - Builds identity payloads for different user types
     """
     
-    # Default session durations by role
-    SESSION_DURATIONS = {
-        'admin': datetime.timedelta(hours=2),
-        'quiz_master': datetime.timedelta(hours=2),
-        'user': datetime.timedelta(hours=2)
-    }
+    ACCESS_TOKEN_DURATION = datetime.timedelta(minutes=15)
+    REFRESH_TOKEN_DURATION = datetime.timedelta(minutes=120)
     
     def __init__(self):
         """Initialize the Session Service."""
         pass
+
+    def _create_token_pair(self, identity, role):
+        session_start = datetime.datetime.utcnow()
+        additional_claims = {
+            'role': role,
+            'session_start': int(session_start.timestamp())
+        }
+        access_token = create_access_token(
+            identity=identity,
+            additional_claims=additional_claims,
+            expires_delta=self.ACCESS_TOKEN_DURATION
+        )
+        refresh_token = create_refresh_token(
+            identity=identity,
+            additional_claims=additional_claims,
+            expires_delta=self.REFRESH_TOKEN_DURATION
+        )
+        return access_token, refresh_token
     
     def create_admin_session(self):
         """
@@ -47,17 +61,16 @@ class SessionService:
         """
         # Admin identity is just the string 'admin'
         identity = 'admin'
-        
-        token = create_access_token(
-            identity=identity,
-            expires_delta=self.SESSION_DURATIONS['admin']
-        )
+        access_token, refresh_token = self._create_token_pair(identity, 'admin')
         
         return {
-            'token': token,
+            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
             'role': 'admin',
             'message': 'Admin login successful',
-            'expires_in': self.SESSION_DURATIONS['admin'].total_seconds()
+            'access_expires_in': self.ACCESS_TOKEN_DURATION.total_seconds(),
+            'refresh_expires_in': self.REFRESH_TOKEN_DURATION.total_seconds()
         }
     
     def create_quiz_master_session(self, quiz_master_data):
@@ -79,17 +92,17 @@ class SessionService:
             'full_name': quiz_master_data['full_name']
         }
         
-        token = create_access_token(
-            identity=identity,
-            expires_delta=self.SESSION_DURATIONS['quiz_master']
-        )
+        access_token, refresh_token = self._create_token_pair(identity, 'quiz_master')
         
         return {
-            'token': token,
+            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
             'role': 'quiz_master',
             'message': 'Quiz Master login successful',
             'full_name': quiz_master_data['full_name'],
-            'expires_in': self.SESSION_DURATIONS['quiz_master'].total_seconds()
+            'access_expires_in': self.ACCESS_TOKEN_DURATION.total_seconds(),
+            'refresh_expires_in': self.REFRESH_TOKEN_DURATION.total_seconds()
         }
     
     def create_user_session(self, user_data):
@@ -111,17 +124,17 @@ class SessionService:
             'qualification': user_data.get('qualification')
         }
         
-        token = create_access_token(
-            identity=identity,
-            expires_delta=self.SESSION_DURATIONS['user']
-        )
+        access_token, refresh_token = self._create_token_pair(identity, 'user')
         
         return {
-            'token': token,
+            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
             'role': 'user',
             'message': 'Login successful',
             'full_name': user_data['full_name'],
-            'expires_in': self.SESSION_DURATIONS['user'].total_seconds()
+            'access_expires_in': self.ACCESS_TOKEN_DURATION.total_seconds(),
+            'refresh_expires_in': self.REFRESH_TOKEN_DURATION.total_seconds()
         }
     
     def create_session(self, role, entity_data):
@@ -163,27 +176,23 @@ class SessionService:
         Returns:
             dict: New session data with fresh token
         """
-        # Determine role from identity
         if current_identity == 'admin':
             role = 'admin'
-            duration = self.SESSION_DURATIONS['admin']
         elif isinstance(current_identity, dict):
             role = current_identity.get('role', 'user')
-            duration = self.SESSION_DURATIONS.get(role, self.SESSION_DURATIONS['user'])
         else:
             role = 'user'
-            duration = self.SESSION_DURATIONS['user']
-        
-        token = create_access_token(
-            identity=current_identity,
-            expires_delta=duration
-        )
+
+        access_token, refresh_token = self._create_token_pair(current_identity, role)
         
         return {
-            'token': token,
+            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
             'role': role,
             'message': 'Session extended',
-            'expires_in': duration.total_seconds()
+            'access_expires_in': self.ACCESS_TOKEN_DURATION.total_seconds(),
+            'refresh_expires_in': self.REFRESH_TOKEN_DURATION.total_seconds()
         }
     
     @staticmethod

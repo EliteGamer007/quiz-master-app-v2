@@ -6,15 +6,15 @@ from flask import Blueprint, request, jsonify
 # check_password_hash: Extracts salt from stored hash to verify passwords securely
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import (
-    create_access_token, jwt_required, get_jwt_identity
+    create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 )
-from models.models import db, User, Admin, QuizMaster
+from models.models import db, User, Admin, QuizMaster, RevokedToken, UserTokenState
 from functools import wraps
 import datetime
 import random
 import string
 from flask_mail import Message
-from extensions import mail
+from extensions import mail, limiter
 
 # Import authentication services
 from services.register_authority import RegisterAuthority
@@ -40,6 +40,72 @@ ADMIN_CREDENTIALS = {
     'email': 'admin@quiz.com',
     'password': 'admin123'
 }
+
+ACCESS_TOKEN_MINUTES = 15
+REFRESH_TOKEN_MINUTES = 120
+ABSOLUTE_SESSION_CAP_MINUTES = 120
+
+
+def _utcnow():
+    return datetime.datetime.utcnow()
+
+
+def _to_datetime_from_unix(unix_ts):
+    return datetime.datetime.utcfromtimestamp(unix_ts)
+
+
+def _create_token_pair(identity, role, session_start=None):
+    now = _utcnow()
+    session_start = session_start or now
+    additional_claims = {
+        'role': role,
+        'session_start': int(session_start.timestamp())
+    }
+
+    access_token = create_access_token(
+        identity=identity,
+        additional_claims=additional_claims,
+        expires_delta=datetime.timedelta(minutes=ACCESS_TOKEN_MINUTES)
+    )
+    refresh_token = create_refresh_token(
+        identity=identity,
+        additional_claims=additional_claims,
+        expires_delta=datetime.timedelta(minutes=REFRESH_TOKEN_MINUTES)
+    )
+
+    return access_token, refresh_token
+
+
+def _revoke_jwt(jwt_payload):
+    jti = jwt_payload.get('jti')
+    token_type = jwt_payload.get('type', 'access')
+    expires_at_unix = jwt_payload.get('exp')
+    identity = jwt_payload.get('identity')
+
+    role = 'admin' if identity == 'admin' else (identity.get('role') if isinstance(identity, dict) else 'unknown')
+    user_id = identity.get('id') if isinstance(identity, dict) else None
+
+    if jti and expires_at_unix:
+        existing = RevokedToken.query.filter_by(jti=jti).first()
+        if existing is None:
+            revoked = RevokedToken(
+                jti=jti,
+                token_type=token_type,
+                user_id=user_id,
+                role=role,
+                expires_at=_to_datetime_from_unix(expires_at_unix)
+            )
+            db.session.add(revoked)
+
+
+def _invalidate_all_tokens_for_user(user_id, role):
+    state = UserTokenState.query.filter_by(user_id=user_id, role=role).first()
+    now = _utcnow()
+    if state is None:
+        state = UserTokenState(user_id=user_id, role=role, valid_after=now)
+        db.session.add(state)
+    else:
+        state.valid_after = now
 
 def admin_required(fn):
     @wraps(fn)
@@ -111,6 +177,7 @@ Quiz Master App Team'''
         return False
 
 @auth_bp.route('/request-otp', methods=['POST'])
+@limiter.limit("10/minute")
 def request_otp():
     """Step 1: Verify credentials and send OTP"""
     data = request.get_json()
@@ -119,11 +186,15 @@ def request_otp():
 
     # Admin login - no OTP required
     if email == ADMIN_CREDENTIALS['email'] and password == ADMIN_CREDENTIALS['password']:
-        token = create_access_token(identity='admin', expires_delta=datetime.timedelta(hours=2))
+        access_token, refresh_token = _create_token_pair(identity='admin', role='admin')
         return jsonify({
             'message': 'Admin login successful',
             'role': 'admin',
-            'token': token,
+            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
+            'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60,
             'requires_otp': False
         }), 200
 
@@ -136,11 +207,15 @@ def request_otp():
             'role': 'quiz_master',
             'full_name': quiz_master.full_name
         }
-        token = create_access_token(identity=identity, expires_delta=datetime.timedelta(hours=2))
+        access_token, refresh_token = _create_token_pair(identity=identity, role='quiz_master')
         return jsonify({
             'message': 'Quiz Master login successful',
             'role': 'quiz_master',
-            'token': token,
+            'token': access_token,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
+            'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60,
             'full_name': quiz_master.full_name,
             'requires_otp': False
         }), 200
@@ -170,6 +245,7 @@ def request_otp():
         return jsonify({'error': 'Failed to send OTP. Please try again.'}), 500
 
 @auth_bp.route('/verify-otp', methods=['POST'])
+@limiter.limit("10/minute")
 def verify_otp():
     """Step 2: Verify OTP and complete login"""
     data = request.get_json()
@@ -208,12 +284,16 @@ def verify_otp():
         'role': 'user',
         'qualification': user.qualification
     }
-    token = create_access_token(identity=identity, expires_delta=datetime.timedelta(hours=2))
+    access_token, refresh_token = _create_token_pair(identity=identity, role='user')
     
     return jsonify({
         'message': 'Login successful',
         'role': 'user',
-        'token': token,
+        'token': access_token,
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
+        'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60,
         'full_name': user.full_name
     }), 200
 
@@ -230,6 +310,7 @@ def login():
 # ============================================================================
 
 @auth_bp.route('/v2/register', methods=['POST'])
+@limiter.limit("8/minute")
 def register_v2():
     """
     Service-based registration (Step 1): Submit registration to Register Authority.
@@ -249,6 +330,7 @@ def register_v2():
         return jsonify(result), status_code
 
 @auth_bp.route('/v2/verify-registration', methods=['POST'])
+@limiter.limit("10/minute")
 def verify_registration_v2():
     """
     Service-based registration (Step 2): Verify OTP and create account via Certificate Provider.
@@ -279,6 +361,7 @@ def verify_registration_v2():
         return jsonify(cert_result), 500
 
 @auth_bp.route('/v2/login', methods=['POST'])
+@limiter.limit("10/minute")
 def login_v2():
     """
     Service-based login (Step 1): Verify credentials with Login Checker.
@@ -321,6 +404,7 @@ def login_v2():
         return jsonify({'error': otp_message}), 500
 
 @auth_bp.route('/v2/verify-login-otp', methods=['POST'])
+@limiter.limit("10/minute")
 def verify_login_otp_v2():
     """
     Service-based login (Step 2): Verify OTP and create session via Session Service.
@@ -352,11 +436,69 @@ def verify_login_otp_v2():
     session_data = session_service.create_user_session(user_data)
     return jsonify(session_data), 200
 
+
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+@limiter.limit("20/minute")
+def refresh_access_token():
+    jwt_payload = get_jwt()
+    identity = get_jwt_identity()
+
+    session_start_unix = jwt_payload.get('session_start')
+    if session_start_unix is None:
+        return jsonify({'error': 'Invalid refresh token'}), 401
+
+    session_start = _to_datetime_from_unix(session_start_unix)
+    if (_utcnow() - session_start) > datetime.timedelta(minutes=ABSOLUTE_SESSION_CAP_MINUTES):
+        _revoke_jwt(jwt_payload)
+        db.session.commit()
+        return jsonify({'error': 'Session expired. Please login again.'}), 401
+
+    role = 'admin' if identity == 'admin' else (identity.get('role') if isinstance(identity, dict) else None)
+    if role not in ('admin', 'quiz_master', 'user'):
+        return jsonify({'error': 'Invalid token role'}), 401
+
+    _revoke_jwt(jwt_payload)
+    access_token, refresh_token = _create_token_pair(identity=identity, role=role, session_start=session_start)
+    db.session.commit()
+
+    return jsonify({
+        'access_token': access_token,
+        'token': access_token,
+        'refresh_token': refresh_token,
+        'access_expires_in': ACCESS_TOKEN_MINUTES * 60,
+        'refresh_expires_in': REFRESH_TOKEN_MINUTES * 60
+    }), 200
+
+
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required(verify_type=False)
+@limiter.limit("30/minute")
+def logout():
+    jwt_payload = get_jwt()
+    _revoke_jwt(jwt_payload)
+
+    data = request.get_json(silent=True) or {}
+    refresh_token = data.get('refresh_token')
+
+    if refresh_token:
+        try:
+            from flask_jwt_extended import decode_token
+            refresh_payload = decode_token(refresh_token)
+            if refresh_payload.get('type') == 'refresh':
+                _revoke_jwt(refresh_payload)
+        except Exception:
+            pass
+
+    db.session.commit()
+    return jsonify({'message': 'Logged out successfully'}), 200
+
 # ============================================================================
 # FORGOT PASSWORD ROUTES
 # ============================================================================
 
 @auth_bp.route('/forgot-password', methods=['POST'])
+@limiter.limit("8/minute")
 def forgot_password():
     """
     Step 1: Request password reset OTP.
@@ -380,6 +522,7 @@ def forgot_password():
         return jsonify({'error': message}), 500
 
 @auth_bp.route('/verify-reset-otp', methods=['POST'])
+@limiter.limit("10/minute")
 def verify_reset_otp():
     """
     Step 2: Verify OTP for password reset.
@@ -404,6 +547,7 @@ def verify_reset_otp():
         return jsonify({'error': result, 'verified': False}), 400
 
 @auth_bp.route('/reset-password', methods=['POST'])
+@limiter.limit("10/minute")
 def reset_password():
     """
     Step 3: Reset password after OTP verification.
@@ -431,6 +575,10 @@ def reset_password():
     success, message = login_checker.reset_password(email, otp, new_password)
     
     if success:
+        user = User.query.filter_by(email=email).first()
+        if user:
+            _invalidate_all_tokens_for_user(user.id, 'user')
+            db.session.commit()
         return jsonify({'message': message}), 200
     else:
         return jsonify({'error': message}), 400
@@ -443,6 +591,7 @@ def reset_password():
 pending_registrations = {}
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit("8/minute")
 def register():
     """Step 1: Validate registration data and send OTP"""
     data = request.get_json()
@@ -495,6 +644,7 @@ Quiz Master Team'''
         return jsonify({'error': 'Failed to send verification email. Please try again.'}), 500
 
 @auth_bp.route('/verify-registration-otp', methods=['POST'])
+@limiter.limit("10/minute")
 def verify_registration_otp():
     """Step 2: Verify OTP and complete registration"""
     data = request.get_json()

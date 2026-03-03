@@ -134,7 +134,7 @@ def generate_aes_key_for_env():
     """
     key = os.urandom(32)
     key_b64 = base64.b64encode(key).decode('utf-8')
-    print(f"\n🔑 Generated AES-256 Key (Base64):")
+    print(f"\n Generated AES-256 Key (Base64):")
     print(f"   {key_b64}")
     print(f"\n   Set as environment variable:")
     print(f"   export QUIZ_AES_KEY='{key_b64}'  # Linux/Mac")

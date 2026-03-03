@@ -102,3 +102,20 @@ class Rating(db.Model):
     quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
     score = db.Column(db.Integer, nullable=False)
     __table_args__ = (db.UniqueConstraint('user_id', 'quiz_id', name='_user_quiz_uc'),)
+
+
+class RevokedToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    jti = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    token_type = db.Column(db.String(10), nullable=False)  # access | refresh
+    user_id = db.Column(db.Integer, nullable=True)
+    role = db.Column(db.String(20), nullable=False)
+    revoked_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+
+class UserTokenState(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, unique=True, nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)  # user | quiz_master
+    valid_after = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
